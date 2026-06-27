@@ -1,0 +1,27 @@
+[Unit]
+Description=Kurug music bot (LiveKit)
+# Arranca después del backend y de LiveKit.
+After=network.target minichat.service
+Wants=minichat.service
+
+[Service]
+Type=simple
+
+# --- CAMBIA ESTOS VALORES ---
+User=pedro
+WorkingDirectory=/home/pedro/chat-app/bot
+
+# Carga SECRET_KEY y LIVEKIT_API_KEY/SECRET desde el .env del proyecto.
+EnvironmentFile=/home/pedro/chat-app/.env
+# El bot corre EN el server: habla con LiveKit directo por loopback, NO por la
+# URL pública wss del navegador. Esto sobreescribe LIVEKIT_URL del .env.
+Environment=LIVEKIT_URL=ws://127.0.0.1:7880
+
+# ffmpeg debe estar instalado en el sistema (sudo apt install ffmpeg).
+ExecStart=/home/pedro/chat-app/bot/.venv/bin/python bot.py
+
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

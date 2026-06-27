@@ -1,0 +1,8 @@
+# Dependencias del bot de música (proceso aparte).
+# Se une como participante a la voz (LiveKit) y publica el audio de YouTube.
+livekit>=1.0
+livekit-api>=1.0
+yt-dlp
+websockets
+PyJWT
+certifi

@@ -1,0 +1,17 @@
+# Servidor LiveKit (SFU de voz/pantalla) en Docker.
+# Solo este servicio va en Docker; el backend y el bot corren con systemd
+# (ver DEPLOY.md) porque necesitan el venv, ffmpeg y yt-dlp.
+#
+# Arrancar:  cd deploy && docker compose up -d
+# Logs:      docker compose logs -f livekit
+
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    # network_mode host = LiveKit ve los puertos UDP reales (necesario para el
+    # media). En Linux es lo recomendado para un SFU.
+    network_mode: host
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro

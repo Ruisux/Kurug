@@ -1,0 +1,23 @@
+[Unit]
+Description=Mini Chat (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+
+# --- CAMBIA ESTOS DOS VALORES ---
+# Tu usuario de Ubuntu (mira con: whoami)
+User=pedro
+# Carpeta donde dejaste el proyecto (donde está la carpeta app/)
+WorkingDirectory=/home/pedro/chat-app
+
+# Usa el python del entorno virtual del proyecto.
+# Un solo worker a propósito: el broadcast vive en memoria (ver README).
+ExecStart=/home/pedro/chat-app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# Reinicia el servicio si se cae.
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini Chat</title>
+  <style>
+    :root {
+      --bg: #1a1714;
+      --panel: #241f1a;
+      --border: #3a322b;
+      --text: #ece6df;
+      --muted: #9a9088;
+      --accent: #d97a4a;
+      --accent-soft: #b5633a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: "JetBrains Mono", ui-monospace, monospace;
+      background: var(--bg); color: var(--text); height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; width: 720px; max-width: 95vw; height: 88vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    header {
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px; font-size: 14px;
+    }
+    header .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+    header .who { margin-left: auto; color: var(--muted); }
+    .row { display: flex; gap: 8px; padding: 12px 16px; flex-wrap: wrap; }
+    input, button, select {
+      font-family: inherit; font-size: 13px; padding: 8px 10px;
+      background: #1d1915; color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+    }
+    input { flex: 1; min-width: 120px; }
+    button {
+      background: var(--accent); color: #1a1714; border: none;
+      cursor: pointer; font-weight: 600;
+    }
+    button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent-soft); }
+    button:hover { background: var(--accent-soft); }
+    button.ghost:hover { background: rgba(217,122,74,0.12); }
+    #messages {
+      flex: 1; overflow-y: auto; padding: 12px 16px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .msg { line-height: 1.4; font-size: 14px; }
+    .msg .author { color: var(--accent); font-weight: 600; }
+    .msg .time { color: var(--muted); font-size: 11px; margin-left: 6px; }
+    .hidden { display: none !important; }
+    .status { padding: 0 16px 8px; color: var(--muted); font-size: 12px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <header>
+      <span class="dot"></span> <strong>Mini Chat</strong>
+      <span class="who" id="who"></span>
+    </header>
+
+    <!-- Login / Registro -->
+    <div id="authView">
+      <div class="row">
+        <input id="username" placeholder="usuario" autocomplete="username" />
+        <input id="password" type="password" placeholder="contraseña" autocomplete="current-password" />
+      </div>
+      <div class="row">
+        <button onclick="register()">Registrarse</button>
+        <button class="ghost" onclick="login()">Entrar</button>
+      </div>
+      <div class="status" id="authStatus"></div>
+    </div>
+
+    <!-- Chat -->
+    <div id="chatView" class="hidden" style="display:flex; flex-direction:column; flex:1; min-height:0;">
+      <div class="row">
+        <select id="channelSelect" onchange="joinChannel()"></select>
+        <input id="newChannel" placeholder="nuevo canal" />
+        <button onclick="createChannel()">Crear</button>
+        <button class="ghost" onclick="logout()">Salir</button>
+      </div>
+      <div id="messages"></div>
+      <div class="status" id="chatStatus"></div>
+      <div class="row">
+        <input id="messageInput" placeholder="Escribe un mensaje…" onkeydown="if(event.key==='Enter')sendMessage()" />
+        <button onclick="sendMessage()">Enviar</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const API = location.origin;
+let token = null;
+let socket = null;
+let currentChannel = null;
+
+const $ = (id) => document.getElementById(id);
+
+async function register() {
+  const r = await fetch(`${API}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: $("username").value, password: $("password").value }),
+  });
+  if (r.ok) { $("authStatus").textContent = "Cuenta creada. Ahora entra."; }
+  else { const e = await r.json(); $("authStatus").textContent = "Error: " + (e.detail || r.status); }
+}
+
+async function login() {
+  // OAuth2 espera form-urlencoded, no JSON.
+  const body = new URLSearchParams({ username: $("username").value, password: $("password").value });
+  const r = await fetch(`${API}/auth/login`, { method: "POST", body });
+  if (!r.ok) { $("authStatus").textContent = "Credenciales inválidas"; return; }
+  const data = await r.json();
+  token = data.access_token;
+  $("who").textContent = $("username").value;
+  $("authView").classList.add("hidden");
+  $("chatView").classList.remove("hidden");
+  await loadChannels();
+}
+
+function logout() {
+  if (socket) socket.close();
+  token = null; currentChannel = null;
+  $("chatView").classList.add("hidden");
+  $("authView").classList.remove("hidden");
+  $("who").textContent = "";
+}
+
+async function loadChannels() {
+  const r = await fetch(`${API}/channels`, { headers: { Authorization: `Bearer ${token}` } });
+  const channels = await r.json();
+  const sel = $("channelSelect");
+  sel.innerHTML = "";
+  channels.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.id; opt.textContent = "# " + c.name;
+    sel.appendChild(opt);
+  });
+  if (channels.length) joinChannel();
+}
+
+async function createChannel() {
+  const name = $("newChannel").value.trim();
+  if (!name) return;
+  const r = await fetch(`${API}/channels`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name }),
+  });
+  if (r.ok) { $("newChannel").value = ""; await loadChannels(); }
+}
+
+async function joinChannel() {
+  currentChannel = $("channelSelect").value;
+  $("messages").innerHTML = "";
+
+  // Historial
+  const r = await fetch(`${API}/channels/${currentChannel}/messages`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  (await r.json()).forEach(addMessage);
+
+  // WebSocket en vivo
+  if (socket) socket.close();
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  socket = new WebSocket(`${proto}://${location.host}/ws/${currentChannel}?token=${token}`);
+  socket.onmessage = (ev) => addMessage(JSON.parse(ev.data));
+  socket.onopen = () => { $("chatStatus").textContent = "Conectado en tiempo real ●"; };
+  socket.onclose = () => { $("chatStatus").textContent = "Desconectado"; };
+}
+
+function sendMessage() {
+  const input = $("messageInput");
+  const content = input.value.trim();
+  if (!content || !socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ content }));
+  input.value = "";
+}
+
+function addMessage(m) {
+  const box = $("messages");
+  const div = document.createElement("div");
+  div.className = "msg";
+  const time = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  div.innerHTML = `<span class="author"></span><span class="time">${time}</span><div></div>`;
+  div.querySelector(".author").textContent = m.author_username;
+  div.querySelector("div").textContent = m.content;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+</script>
+</body>
+</html>

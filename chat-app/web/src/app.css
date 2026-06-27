@@ -1,0 +1,114 @@
+/*
+  Tema Kurug.
+  Dos modos: oscuro "sumi" (tinta) por defecto y claro "washi" (papel cálido).
+  Todo se controla con variables; el toggle solo cambia [data-theme] en <html>.
+*/
+
+:root,
+:root[data-theme="dark"] {
+  --ink: #15110f;        /* fondo de página */
+  --pan: #1c1714;        /* paneles */
+  --rail: #100c0a;       /* barra de servidores */
+  --hover: #251f1a;
+  --bd: rgba(194, 163, 91, 0.14);   /* hairline latón */
+  --bd2: rgba(194, 163, 91, 0.3);
+  --tx: #ece5db;
+  --mut: #9a8f84;
+  --fnt: #6e655d;
+  --shu: #e2553b;        /* bermellón (acento) — lo sobreescribe el perfil */
+  --shu-rgb: 226, 85, 59; /* mismo acento en RGB para tintes (rgba) */
+  --shu-deep: #c0432c;
+  --gold: #c2a35b;
+  --on: #6fbf8e;         /* en línea */
+  --away: #e0a53c;       /* ausente */
+  --dnd: #e2553b;        /* no molestar */
+  --off: #6e655d;        /* invisible / desconectado */
+  --field: #1d1814;
+  --art-bg: var(--ink); /* placeholder de carátula: se funde con el fondo */
+  --shadow: rgba(0, 0, 0, 0.35);
+}
+
+:root[data-theme="light"] {
+  --ink: #e9e1d1;        /* papel washi cálido, NO blanco nieve */
+  --pan: #f1ead9;
+  --rail: #ddd3bf;
+  --hover: #e3d9c5;
+  --bd: rgba(120, 92, 40, 0.2);
+  --bd2: rgba(120, 92, 40, 0.34);
+  --tx: #2a231b;         /* tinta sumi sobre papel */
+  --mut: #6e6155;
+  --fnt: #9c8f7e;
+  --shu: #c6452c;        /* bermellón algo más profundo para contraste */
+  --shu-rgb: 198, 69, 44;
+  --shu-deep: #a8381f;
+  --gold: #9a7b35;
+  --on: #2e8b5e;
+  --away: #b9801a;
+  --dnd: #c6452c;
+  --off: #a99c88;
+  --field: #f6f0e3;
+  --art-bg: var(--ink); /* placeholder de carátula: se funde con el papel */
+  --shadow: rgba(80, 60, 30, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  /* Experiencia diaria de la app: Poppins. Los kanji caen a fuente del sistema. */
+  font-family: "Poppins", system-ui, sans-serif;
+  background: var(--ink);
+  color: var(--tx);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtítulos/branding latinos: Sora SemiBold por defecto. */
+.display {
+  font-family: "Sora", system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+/* Títulos principales: Sora Bold. */
+.display.title {
+  font-weight: 700;
+}
+
+/* Marcas kanji (刃 道 音 間): fuente japonesa (Sora/Poppins no las tienen). */
+.serif {
+  font-family: "Shippori Mincho", serif;
+}
+
+/* Tipografía base de controles */
+input,
+button,
+textarea,
+select {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* Scrollbars discretos y a tono */
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--bd2);
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+button {
+  cursor: pointer;
+  font-weight: 500; /* Botones y CTAs: Poppins Medium */
+}

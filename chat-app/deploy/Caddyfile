@@ -1,0 +1,29 @@
+# Reverse proxy con HTTPS automático (Let's Encrypt).
+# Une en UN solo origen: la SPA, la API del backend y la señalización de LiveKit.
+# Así el navegador usa wss:// del mismo dominio (sin "mixed content") y el media
+# de LiveKit va por su IP/puertos UDP (ver livekit.yaml + router).
+#
+# Requisitos: el dominio apunta a la IP pública del server y los puertos 80/443
+# están accesibles. Instalar Caddy: https://caddyserver.com/docs/install
+#
+# Pon en .env:  LIVEKIT_URL=wss://kurug.tudominio.com
+
+kurug.tudominio.com {
+    # Permite subir archivos grandes (acorde con MAX_UPLOAD_MB del .env).
+    request_body {
+        max_size 2GB
+    }
+
+    # Señalización de LiveKit -> SFU (WebSocket; Caddy lo gestiona solo).
+    @livekit path /rtc* /twirp*
+    reverse_proxy @livekit 127.0.0.1:7880
+
+    # API REST + WebSockets de la app -> backend FastAPI.
+    @backend path /auth* /users* /channels* /presence* /dms* /voice* /uploads* /gifs* /static* /ws*
+    reverse_proxy @backend 127.0.0.1:8000
+
+    # El resto: la SPA estática (build de web/), con fallback a index.html.
+    root * /home/pedro/chat-app/web/dist
+    try_files {path} /index.html
+    file_server
+}

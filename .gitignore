@@ -1,0 +1,32 @@
+# Secretos y datos — NUNCA subir
+.env
+*.db
+*.db-*
+*.db.bak*
+*.sqlite
+
+# Entornos y dependencias
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+
+# Builds y artefactos
+dist/
+build/
+chat-app/web/src-tauri/target/
+chat-app/web/src-tauri/gen/
+
+# Certificados locales (mkcert) y claves de firma
+.certs/
+*.key
+*.pem
+
+# Avatares/subidas (contenido de usuarios, no código)
+chat-app/static/avatars/*
+!chat-app/static/avatars/.gitkeep
+chat-app/static/uploads/
+
+# macOS / tooling local
+.DS_Store
+.claude/
