@@ -38,6 +38,14 @@ foreach ($p in @($venvPy, $botPy, $botScript, $livekit, $livekitCfg, $caddyCfg))
     if (-not (Test-Path $p)) { throw "No existe: $p" }
 }
 
+# El bot lanza ffmpeg para reproducir. Como servicio corre en LocalSystem (PATH
+# del sistema), que NO tiene el ffmpeg de winget (PATH de usuario). Resolvemos su
+# carpeta ahora y se la damos al servicio del bot en su PATH.
+$ffmpeg = (Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
+if (-not $ffmpeg) { throw "No encuentro ffmpeg en el PATH (lo necesita el bot para reproducir)." }
+$ffmpegDir = Split-Path $ffmpeg
+$botPath = "$ffmpegDir;" + [Environment]::GetEnvironmentVariable('Path', 'Machine')
+
 # --- NSSM (descarga a bin\ si no esta) ---
 Info "Comprobando NSSM"
 $nssm = (Get-Command nssm -ErrorAction SilentlyContinue).Source
@@ -101,7 +109,7 @@ Info "Creando servicios (rutas absolutas)"
 Set-Svc "kurug-livekit" $livekit "--config `"$livekitCfg`"" $chatApp $null $null
 Set-Svc "kurug-backend" $venvPy "-m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir `"$chatApp`"" $chatApp $null $null
 Set-Svc "kurug-bot" $botPy "`"$botScript`"" $botDir `
-    @("SECRET_KEY=$secretKey", "LIVEKIT_URL=ws://localhost:7880", "LIVEKIT_API_KEY=$lkKey", "LIVEKIT_API_SECRET=$lkSecret") `
+    @("SECRET_KEY=$secretKey", "LIVEKIT_URL=ws://localhost:7880", "LIVEKIT_API_KEY=$lkKey", "LIVEKIT_API_SECRET=$lkSecret", "PATH=$botPath") `
     @("kurug-backend", "kurug-livekit")
 Set-Svc "kurug-caddy" $caddy "run --config `"$caddyCfg`"" $chatApp $null $null
 
