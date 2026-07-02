@@ -1,0 +1,25 @@
+# Configuracion de LiveKit para el server casero (router + DuckDNS).
+# Documentacion: https://docs.livekit.io/home/self-hosting/deployment/
+#
+# COPIA este archivo a  livekit.yaml  y rellena la clave real (keys).
+# El  livekit.yaml  con el secret NO se sube a git (esta en .gitignore).
+
+port: 7880                 # HTTP/WebSocket de senalizacion (lo proxea Caddy a wss)
+
+rtc:
+  # Puerto TCP de respaldo cuando el UDP del cliente esta bloqueado.
+  tcp_port: 7881
+  # UN SOLO puerto UDP para todo el media (mas facil de abrir en el router
+  # que un rango). Reenvia UDP 7882 -> este PC.
+  udp_port: 7882
+  # Que LiveKit detecte su IP PUBLICA por STUN y la anuncie a los clientes.
+  use_external_ip: true
+
+# Claves de la API. key/secret deben COINCIDIR con LIVEKIT_API_KEY/SECRET del
+# backend (.env) y del bot. Genera el secret con:
+#   python -c "import secrets; print(secrets.token_hex(32))"
+keys:
+  kurug: CAMBIA_ESTE_SECRET_LARGO_Y_ALEATORIO
+
+logging:
+  level: info

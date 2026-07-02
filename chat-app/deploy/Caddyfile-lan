@@ -1,0 +1,38 @@
+# Caddy para PRUEBA EN LAN por HTTP (sin certificado, sin dominio).
+# Sirve la SPA y proxya API/WS al backend, todo en UN origen, en el puerto 8080
+# de TODAS las interfaces -> accesible desde otros dispositivos de tu WiFi en:
+#   http://192.168.1.28:8080
+#
+# OJO: por HTTP (no localhost) los navegadores NO permiten micro/compartir
+# pantalla. Esto es solo para probar el CHAT desde tus dispositivos.
+#
+#   caddy run --config deploy\Caddyfile-lan
+#
+# Usa bloques `handle` (exclusivos) para que `try_files` de la SPA NO reescriba
+# las rutas de API antes del reverse_proxy.
+
+:8080 {
+    # Subidas grandes (acorde con MAX_UPLOAD_MB).
+    request_body {
+        max_size 2GB
+    }
+
+    # Señalización de LiveKit -> SFU (solo si arrancas LiveKit; la voz no va por HTTP).
+    @livekit path /rtc* /twirp*
+    handle @livekit {
+        reverse_proxy 127.0.0.1:7880
+    }
+
+    # API REST + WebSockets de la app -> backend.
+    @backend path /auth* /users* /channels* /presence* /dms* /voice* /uploads* /gifs* /static* /ws*
+    handle @backend {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    # El resto: la SPA estática (build de web/dist), con fallback a index.html.
+    handle {
+        root * C:\kurug\chat-app\web\dist
+        try_files {path} /index.html
+        file_server
+    }
+}

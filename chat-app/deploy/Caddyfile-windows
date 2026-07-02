@@ -1,15 +1,18 @@
 # Caddy en Windows con dominio DuckDNS + HTTPS automático (Let's Encrypt).
-# Une en UN origen (https://tunombre.duckdns.org): la SPA, la API y la
+# Une en UN origen (https://kurug.duckdns.org): la SPA, la API y la
 # señalización de LiveKit. Ejecuta:  caddy run --config deploy\Caddyfile-windows
 #
 # Requisitos:
-#   - Tener creado tunombre.duckdns.org y que apunte a tu IP pública (el
+#   - Tener creado kurug.duckdns.org y que apunte a tu IP pública (el
 #     actualizador de DuckDNS la mantiene al día).
 #   - Reenviar en el router al PC:  TCP 80 y TCP 443 (Caddy saca el cert por el 80).
 #
-# Sustituye "tunombre.duckdns.org" y la ruta de  root *  por tu carpeta dist.
+# Sustituye "kurug.duckdns.org" y la ruta de  root *  por tu carpeta dist.
+#
+# Usa bloques `handle` (exclusivos) para que el `try_files` de la SPA NO reescriba
+# las rutas de API (/channels, /users, ...) a /index.html antes del reverse_proxy.
 
-tunombre.duckdns.org {
+kurug.duckdns.org {
     # Caddy obtiene y renueva el certificado automáticamente (Let's Encrypt).
 
     # Subidas grandes (acorde con MAX_UPLOAD_MB).
@@ -19,14 +22,20 @@ tunombre.duckdns.org {
 
     # Señalización de LiveKit -> SFU.
     @livekit path /rtc* /twirp*
-    reverse_proxy @livekit 127.0.0.1:7880
+    handle @livekit {
+        reverse_proxy 127.0.0.1:7880
+    }
 
     # API REST + WebSockets de la app -> backend.
     @backend path /auth* /users* /channels* /presence* /dms* /voice* /uploads* /gifs* /static* /ws*
-    reverse_proxy @backend 127.0.0.1:8000
+    handle @backend {
+        reverse_proxy 127.0.0.1:8000
+    }
 
     # El resto: la SPA estática (build de web/dist), con fallback a index.html.
-    root * C:\kurug\chat-app\web\dist
-    try_files {path} /index.html
-    file_server
+    handle {
+        root * C:\kurug\chat-app\web\dist
+        try_files {path} /index.html
+        file_server
+    }
 }

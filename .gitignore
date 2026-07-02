@@ -5,6 +5,14 @@
 *.db.bak*
 *.sqlite
 
+# Config de despliegue CON secretos reales (usa los *.example como plantilla)
+chat-app/deploy/livekit.yaml
+chat-app/deploy/start-kurug.bat
+
+# Binarios/scripts locales del server: livekit-server.exe, duckdns-update.ps1
+# (lleva el token), logs y ficheros sueltos. Se quedan solo en este PC.
+/bin/
+
 # Entornos y dependencias
 .venv/
 __pycache__/
