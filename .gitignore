@@ -13,6 +13,9 @@ chat-app/deploy/start-kurug.bat
 # (lleva el token), logs y ficheros sueltos. Se quedan solo en este PC.
 /bin/
 
+# Logs de los servicios NSSM
+/logs/
+
 # Entornos y dependencias
 .venv/
 __pycache__/
