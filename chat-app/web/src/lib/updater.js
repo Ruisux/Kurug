@@ -1,11 +1,10 @@
-// Auto-actualización (solo en la app de escritorio / Tauri).
-// Comprueba si hay versión nueva publicada en GitHub Releases; si la hay,
-// expone un store para mostrar un botón "Actualizar y reiniciar".
+// Auto-actualización de la app de escritorio. Soporta Electron (electron-updater)
+// y, mientras dure la migración, Tauri. Expone un store para el aviso de "hay
+// versión nueva" y un botón "Actualizar y reiniciar".
 import { writable } from "svelte/store";
+import { isElectron, isTauri, updater as desktopUpdater } from "./desktop.js";
 
-const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-
-// { available, version, notes, downloading, progress(0..1), error } | null mientras carga
+// { available, version, notes, downloading, progress(0..1), error }
 export const updateState = writable({
   available: false,
   version: "",
@@ -16,20 +15,36 @@ export const updateState = writable({
 });
 
 let pending = null; // objeto Update de Tauri
+let electronWired = false;
+
+function wireElectron() {
+  if (electronWired) return;
+  electronWired = true;
+  desktopUpdater.on("available", (info) =>
+    updateState.update((s) => ({ ...s, available: true, version: info.version, notes: info.notes || "" })),
+  );
+  desktopUpdater.on("progress", (p) =>
+    updateState.update((s) => ({ ...s, downloading: true, progress: p || 0 })),
+  );
+  desktopUpdater.on("error", (e) =>
+    updateState.update((s) => ({ ...s, downloading: false, error: String(e) })),
+  );
+  // "update-downloaded" reinicia solo (quitAndInstall en el main).
+}
 
 export async function checkForUpdates() {
+  if (isElectron) {
+    wireElectron();
+    try { await desktopUpdater.check(); } catch (e) { console.warn("checkForUpdates:", e); }
+    return;
+  }
   if (!isTauri) return;
   try {
     const { check } = await import("@tauri-apps/plugin-updater");
     const update = await check();
     if (update) {
       pending = update;
-      updateState.update((s) => ({
-        ...s,
-        available: true,
-        version: update.version,
-        notes: update.body || "",
-      }));
+      updateState.update((s) => ({ ...s, available: true, version: update.version, notes: update.body || "" }));
     }
   } catch (e) {
     console.warn("checkForUpdates:", e);
@@ -37,6 +52,13 @@ export async function checkForUpdates() {
 }
 
 export async function installUpdate() {
+  if (isElectron) {
+    updateState.update((s) => ({ ...s, downloading: true, error: "" }));
+    try { await desktopUpdater.install(); } catch (e) {
+      updateState.update((s) => ({ ...s, downloading: false, error: String(e) }));
+    }
+    return;
+  }
   if (!isTauri || !pending) return;
   try {
     updateState.update((s) => ({ ...s, downloading: true, error: "" }));
@@ -49,7 +71,6 @@ export async function installUpdate() {
         if (total) updateState.update((s) => ({ ...s, progress: got / total }));
       }
     });
-    // Reiniciar la app para aplicar la actualización.
     const { relaunch } = await import("@tauri-apps/plugin-process");
     await relaunch();
   } catch (e) {

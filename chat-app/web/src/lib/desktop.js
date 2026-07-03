@@ -21,6 +21,30 @@ export function platform() {
   return isTauri ? "linux" : "web";
 }
 
+// --- Auto-update (Electron: electron-updater vía IPC) ---
+export const updater = {
+  supported: isElectron,
+  check() { if (isElectron && w.kurug.updater) return w.kurug.updater.check(); },
+  install() { if (isElectron && w.kurug.updater) return w.kurug.updater.install(); },
+  on(event, cb) {
+    if (isElectron && w.kurug.updater) return w.kurug.updater.on(event, cb);
+    return () => {};
+  },
+};
+
+// --- Atajos globales (Electron: globalShortcut vía IPC) ---
+export const globalShortcuts = {
+  supported: isElectron,
+  async register(list) {
+    if (isElectron && w.kurug.shortcuts) return w.kurug.shortcuts.register(list);
+    return [];
+  },
+  onTrigger(cb) {
+    if (isElectron && w.kurug.shortcuts) return w.kurug.shortcuts.onTrigger(cb);
+    return () => {};
+  },
+};
+
 // --- Controles de ventana (barra de título propia) ---
 let tauriWin = null;
 async function getTauriWindow() {

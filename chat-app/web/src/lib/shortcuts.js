@@ -13,8 +13,8 @@
 import { get } from "svelte/store";
 import { prefs } from "./prefs.js";
 import { toggleMute, toggleDeafen } from "./voice.js";
+import { isElectron, isTauri, globalShortcuts } from "./desktop.js";
 
-const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 const isMac =
   typeof navigator !== "undefined" && /mac/i.test(navigator.platform || "");
 
@@ -191,13 +191,35 @@ function attachWeb(entries) {
   window.addEventListener("blur", blurH);
 }
 
+// --- Atajos globales en Electron (globalShortcut vía IPC) ---
+let electronTriggerWired = false;
+async function applyElectron(entries) {
+  const toReg = [];
+  for (const [kind, combo] of entries) {
+    const accel = toAccel(combo);
+    if (accel) toReg.push({ id: kind, accel });
+  }
+  let ok = [];
+  try { ok = await globalShortcuts.register(toReg); } catch {}
+  if (!electronTriggerWired) {
+    electronTriggerWired = true;
+    globalShortcuts.onTrigger((id) => actionFor(id)());
+  }
+  const okKinds = new Set(toReg.filter((r) => ok.includes(r.accel)).map((r) => r.id));
+  // Los combos que el global no cubre (solo modificadores, izq/der) van al foco.
+  return entries.filter(([kind]) => !okKinds.has(kind));
+}
+
 // (Re)aplica los atajos según las preferencias actuales.
 export async function applyShortcuts() {
   const p = get(prefs);
   const entries = [["mute", normalize(p.muteShortcut)], ["deafen", normalize(p.deafenShortcut)]]
     .filter(([, c]) => c);
   try {
-    if (isTauri) {
+    if (isElectron) {
+      const focusOnly = await applyElectron(entries);
+      attachWeb(focusOnly);
+    } else if (isTauri) {
       const focusOnly = await applyTauri(entries);
       attachWeb(focusOnly); // fallback con foco para lo que el global no cubre
     } else {

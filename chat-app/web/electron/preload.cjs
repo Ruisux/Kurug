@@ -20,4 +20,26 @@ contextBridge.exposeInMainWorld("kurug", {
     getSources: () => ipcRenderer.invoke("screen:getSources"),
     setChoice: (choice) => ipcRenderer.send("screen:setChoice", choice || null),
   },
+
+  // Auto-update: check/install y eventos (available/progress/error).
+  updater: {
+    check: () => ipcRenderer.invoke("updater:check"),
+    install: () => ipcRenderer.invoke("updater:install"),
+    on: (event, cb) => {
+      const listener = (_e, data) => cb(data);
+      ipcRenderer.on("updater:" + event, listener);
+      return () => ipcRenderer.removeListener("updater:" + event, listener);
+    },
+  },
+
+  // Atajos globales: register() devuelve los aceleradores registrados; onTrigger
+  // avisa cuando se pulsa uno (con app en segundo plano).
+  shortcuts: {
+    register: (list) => ipcRenderer.invoke("shortcuts:register", list),
+    onTrigger: (cb) => {
+      const listener = (_e, id) => cb(id);
+      ipcRenderer.on("shortcuts:trigger", listener);
+      return () => ipcRenderer.removeListener("shortcuts:trigger", listener);
+    },
+  },
 });

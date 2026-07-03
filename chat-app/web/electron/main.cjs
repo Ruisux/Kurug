@@ -6,7 +6,8 @@
 // Fase 1: ventana + controles de ventana (min/max/cerrar) por IPC.
 // (El selector de pantalla propio y el audio del sistema llegan en la Fase 2;
 //  el auto-update y los atajos globales, en la Fase 3.)
-const { app, BrowserWindow, ipcMain, shell, protocol, net, session, desktopCapturer } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, protocol, net, session, desktopCapturer, globalShortcut } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
@@ -131,6 +132,45 @@ function setupDisplayMedia() {
   );
 }
 
+// --- Auto-update (electron-updater; lee la config de publish del builder) ---
+function setupUpdater() {
+  autoUpdater.autoDownload = false; // descargar solo al pulsar "Actualizar"
+  autoUpdater.autoInstallOnAppQuit = true;
+  const send = (ch, data) => mainWindow?.webContents.send(ch, data);
+  autoUpdater.on("update-available", (info) =>
+    send("updater:available", { version: info.version, notes: info.releaseNotes || "" }),
+  );
+  autoUpdater.on("error", (err) => send("updater:error", String(err)));
+  autoUpdater.on("download-progress", (p) => send("updater:progress", (p.percent || 0) / 100));
+  autoUpdater.on("update-downloaded", () => autoUpdater.quitAndInstall());
+}
+ipcMain.handle("updater:check", async () => {
+  if (!app.isPackaged) return; // el auto-update solo aplica empaquetado
+  try { await autoUpdater.checkForUpdates(); } catch {}
+});
+ipcMain.handle("updater:install", async () => {
+  try { await autoUpdater.downloadUpdate(); } catch (e) {
+    mainWindow?.webContents.send("updater:error", String(e));
+  }
+});
+
+// --- Atajos globales (funcionan con la app en segundo plano) ---
+let registeredAccels = [];
+ipcMain.handle("shortcuts:register", (_e, list) => {
+  for (const a of registeredAccels) { try { globalShortcut.unregister(a); } catch {} }
+  registeredAccels = [];
+  const ok = [];
+  for (const { id, accel } of list || []) {
+    try {
+      globalShortcut.register(accel, () => mainWindow?.webContents.send("shortcuts:trigger", id));
+      registeredAccels.push(accel);
+      ok.push(accel);
+    } catch {}
+  }
+  return ok; // aceleradores que SÍ se registraron (el resto cae al foco)
+});
+app.on("will-quit", () => globalShortcut.unregisterAll());
+
 // --- Controles de ventana (los invoca la barra de título del renderer) ---
 ipcMain.handle("window:minimize", () => mainWindow?.minimize());
 ipcMain.handle("window:toggleMaximize", () => {
@@ -143,6 +183,7 @@ ipcMain.handle("window:close", () => mainWindow?.close());
 app.whenReady().then(() => {
   registerAppProtocol();
   setupDisplayMedia();
+  setupUpdater();
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
