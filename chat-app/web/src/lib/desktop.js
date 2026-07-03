@@ -31,6 +31,20 @@ async function getTauriWindow() {
   return tauriWin;
 }
 
+// --- Selector de pantalla (solo Electron; en web/Tauri usa el del navegador) ---
+export const screenPicker = {
+  supported: isElectron,
+  // Registra el callback que recibe las fuentes cuando el main pide elegir.
+  // Devuelve una función para desuscribirse. No-op fuera de Electron.
+  onRequest(cb) {
+    if (isElectron && w.kurug.screen) return w.kurug.screen.onRequest(cb);
+    return () => {};
+  },
+  respond(choice) {
+    if (isElectron && w.kurug.screen) w.kurug.screen.respond(choice);
+  },
+};
+
 export const windowControls = {
   async minimize() {
     if (isElectron) return w.kurug.window.minimize();

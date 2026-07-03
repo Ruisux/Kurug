@@ -6,7 +6,7 @@
 // Fase 1: ventana + controles de ventana (min/max/cerrar) por IPC.
 // (El selector de pantalla propio y el audio del sistema llegan en la Fase 2;
 //  el auto-update y los atajos globales, en la Fase 3.)
-const { app, BrowserWindow, ipcMain, shell, protocol, net } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, protocol, net, session, desktopCapturer } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
@@ -79,6 +79,51 @@ function createWindow() {
   mainWindow.loadURL(resolveStartUrl());
 }
 
+// --- Compartir pantalla con SELECTOR PROPIO (sin el picker de Chrome ni la
+//     barra de "estás compartiendo") + audio del sistema en Windows ---
+//
+// Cuando LiveKit llama a getDisplayMedia, Electron ejecuta este handler. En vez
+// de mostrar el picker nativo, pedimos al renderer que muestre nuestro selector
+// (ScreenPicker.svelte) y esperamos la elección.
+let pendingPick = null;
+ipcMain.on("screen:choice", (_e, choice) => {
+  if (pendingPick) { pendingPick(choice); pendingPick = null; }
+});
+
+function setupDisplayMedia() {
+  session.defaultSession.setDisplayMediaRequestHandler(
+    async (_request, callback) => {
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ["screen", "window"],
+          thumbnailSize: { width: 320, height: 180 },
+          fetchWindowIcons: true,
+        });
+        const serial = sources.map((s) => ({
+          id: s.id,
+          name: s.name,
+          type: s.id.startsWith("screen:") ? "screen" : "window",
+          thumbnail: s.thumbnail && !s.thumbnail.isEmpty() ? s.thumbnail.toDataURL() : null,
+          appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+        }));
+        const choice = await new Promise((resolve) => {
+          pendingPick = resolve;
+          mainWindow?.webContents.send("screen:request", serial);
+        });
+        if (!choice || !choice.id) return callback(); // cancelado
+        const source = sources.find((s) => s.id === choice.id);
+        if (!source) return callback();
+        // audio del sistema: solo Windows soporta 'loopback' de forma fiable.
+        const withAudio = choice.audio && process.platform === "win32";
+        callback(withAudio ? { video: source, audio: "loopback" } : { video: source });
+      } catch {
+        callback();
+      }
+    },
+    { useSystemPicker: false },
+  );
+}
+
 // --- Controles de ventana (los invoca la barra de título del renderer) ---
 ipcMain.handle("window:minimize", () => mainWindow?.minimize());
 ipcMain.handle("window:toggleMaximize", () => {
@@ -90,6 +135,7 @@ ipcMain.handle("window:close", () => mainWindow?.close());
 
 app.whenReady().then(() => {
   registerAppProtocol();
+  setupDisplayMedia();
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

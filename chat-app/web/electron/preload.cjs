@@ -12,4 +12,15 @@ contextBridge.exposeInMainWorld("kurug", {
     toggleMaximize: () => ipcRenderer.invoke("window:toggleMaximize"),
     close: () => ipcRenderer.invoke("window:close"),
   },
+
+  // Selector de pantalla propio: el main pide elegir fuente (onRequest) y el
+  // renderer responde con la elección (respond) o {} para cancelar.
+  screen: {
+    onRequest: (cb) => {
+      const listener = (_e, sources) => cb(sources);
+      ipcRenderer.on("screen:request", listener);
+      return () => ipcRenderer.removeListener("screen:request", listener);
+    },
+    respond: (choice) => ipcRenderer.send("screen:choice", choice || {}),
+  },
 });
