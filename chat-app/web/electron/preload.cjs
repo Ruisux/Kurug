@@ -13,14 +13,11 @@ contextBridge.exposeInMainWorld("kurug", {
     close: () => ipcRenderer.invoke("window:close"),
   },
 
-  // Selector de pantalla propio: el main pide elegir fuente (onRequest) y el
-  // renderer responde con la elección (respond) o {} para cancelar.
+  // Selector de pantalla propio (flujo dirigido por el renderer):
+  // getSources() -> lista de pantallas/ventanas; setChoice() deja la elección
+  // que el handler de getDisplayMedia usará al compartir.
   screen: {
-    onRequest: (cb) => {
-      const listener = (_e, sources) => cb(sources);
-      ipcRenderer.on("screen:request", listener);
-      return () => ipcRenderer.removeListener("screen:request", listener);
-    },
-    respond: (choice) => ipcRenderer.send("screen:choice", choice || {}),
+    getSources: () => ipcRenderer.invoke("screen:getSources"),
+    setChoice: (choice) => ipcRenderer.send("screen:setChoice", choice || null),
   },
 });

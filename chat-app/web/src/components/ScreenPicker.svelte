@@ -1,39 +1,41 @@
 <script>
-  // Selector de pantalla PROPIO (solo Electron). Cuando LiveKit pide compartir,
-  // el main process manda las fuentes y este modal deja elegir cuál compartir,
-  // con opción de incluir el audio del sistema (Windows). Sustituye al selector
-  // de Chrome y evita la barra de "estás compartiendo".
-  import { onMount, onDestroy } from "svelte";
-  import { screenPicker, platform } from "../lib/desktop.js";
+  // Selector de pantalla PROPIO (solo Electron). Lo abre voice.js al compartir.
+  // Deja elegir la fuente, la CALIDAD y (para pantallas completas) el audio del
+  // sistema. Sustituye al selector de Chrome y evita la barra de "compartiendo".
+  import { pickerStore, resolvePick } from "../lib/screenshare.js";
+  import { platform } from "../lib/desktop.js";
+  import { SCREEN_PRESETS, voiceState } from "../lib/voice.js";
+  import { get } from "svelte/store";
 
-  let open = false;
+  const presetEntries = Object.entries(SCREEN_PRESETS);
+  const isWindows = platform() === "windows";
+
   let sources = [];
   let selectedId = null;
   let systemAudio = false;
-  let unsub = () => {};
+  let quality = "equilibrado";
+
+  $: open = $pickerStore != null;
+  $: if ($pickerStore) {
+    sources = $pickerStore.sources || [];
+    selectedId = sources[0]?.id ?? null;
+    systemAudio = false;
+    quality = get(voiceState).quality || "equilibrado";
+  }
 
   $: screens = sources.filter((s) => s.type === "screen");
   $: windows = sources.filter((s) => s.type === "window");
-  $: isWindows = platform() === "windows";
-
-  onMount(() => {
-    unsub = screenPicker.onRequest((list) => {
-      sources = list || [];
-      selectedId = sources[0]?.id ?? null;
-      systemAudio = false;
-      open = true;
-    });
-  });
-  onDestroy(() => unsub());
+  $: selected = sources.find((s) => s.id === selectedId) || null;
+  // El audio del sistema solo es fiable capturando una PANTALLA completa.
+  $: audioAllowed = isWindows && selected?.type === "screen";
+  $: if (!audioAllowed) systemAudio = false;
 
   function share() {
     if (!selectedId) return cancel();
-    screenPicker.respond({ id: selectedId, audio: systemAudio && isWindows });
-    open = false;
+    resolvePick({ id: selectedId, audio: systemAudio && audioAllowed, quality });
   }
   function cancel() {
-    screenPicker.respond({}); // cancela el getDisplayMedia
-    open = false;
+    resolvePick(null);
   }
 </script>
 
@@ -76,10 +78,20 @@
     </div>
 
     <footer>
-      <label class="audio" class:dim={!isWindows}>
-        <input type="checkbox" bind:checked={systemAudio} disabled={!isWindows} />
-        <span>Compartir audio del sistema{#if !isWindows}<small>solo en Windows</small>{/if}</span>
-      </label>
+      <div class="opts">
+        <label class="opt">
+          <span class="opt-lbl">Calidad</span>
+          <select bind:value={quality}>
+            {#each presetEntries as [key, p] (key)}
+              <option value={key}>{p.label}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="audio" class:dim={!audioAllowed}>
+          <input type="checkbox" bind:checked={systemAudio} disabled={!audioAllowed} />
+          <span>Audio del sistema{#if !audioAllowed}<small>{isWindows ? "solo con pantalla completa" : "solo en Windows"}</small>{/if}</span>
+        </label>
+      </div>
       <div class="actions">
         <button class="btn ghost" on:click={cancel}>Cancelar</button>
         <button class="btn go" on:click={share} disabled={!selectedId}>
@@ -104,7 +116,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: min(640px, 94vw);
+    width: min(660px, 94vw);
     max-height: 86vh;
     display: flex;
     flex-direction: column;
@@ -123,17 +135,14 @@
   .title { font-size: 16px; }
   .x { background: none; border: none; color: var(--mut); font-size: 18px; }
   .x:hover { color: var(--shu); }
-  .body {
-    padding: 12px 16px;
-    overflow-y: auto;
-  }
+  .body { padding: 12px 16px; overflow-y: auto; }
   .lbl {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--mut);
-    margin: 8px 2px 8px;
+    margin: 8px 2px;
   }
   .grid {
     display: grid;
@@ -195,6 +204,19 @@
     border-top: 1px solid var(--bd);
     flex-wrap: wrap;
   }
+  .opts { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .opt { display: flex; align-items: center; gap: 8px; }
+  .opt-lbl { font-size: 12px; color: var(--mut); }
+  .opt select {
+    background: var(--field);
+    border: 1px solid var(--bd2);
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 12.5px;
+    color: var(--tx);
+    outline: none;
+  }
+  .opt select:focus { border-color: var(--shu); }
   .audio {
     display: flex;
     align-items: center;

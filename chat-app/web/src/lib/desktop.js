@@ -34,14 +34,14 @@ async function getTauriWindow() {
 // --- Selector de pantalla (solo Electron; en web/Tauri usa el del navegador) ---
 export const screenPicker = {
   supported: isElectron,
-  // Registra el callback que recibe las fuentes cuando el main pide elegir.
-  // Devuelve una función para desuscribirse. No-op fuera de Electron.
-  onRequest(cb) {
-    if (isElectron && w.kurug.screen) return w.kurug.screen.onRequest(cb);
-    return () => {};
+  // Lista de pantallas/ventanas para elegir. [] fuera de Electron.
+  async getSources() {
+    if (isElectron && w.kurug.screen) return w.kurug.screen.getSources();
+    return [];
   },
-  respond(choice) {
-    if (isElectron && w.kurug.screen) w.kurug.screen.respond(choice);
+  // Deja la elección que usará getDisplayMedia al compartir.
+  setChoice(choice) {
+    if (isElectron && w.kurug.screen) w.kurug.screen.setChoice(choice);
   },
 };
 

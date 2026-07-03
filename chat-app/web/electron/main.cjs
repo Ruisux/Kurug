@@ -70,6 +70,9 @@ function createWindow() {
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
 
+  // En desarrollo (no empaquetado) abrimos las DevTools para depurar.
+  if (!app.isPackaged) mainWindow.webContents.openDevTools({ mode: "detach" });
+
   // Los enlaces externos se abren en el navegador del sistema, no en la app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) shell.openExternal(url);
@@ -82,39 +85,43 @@ function createWindow() {
 // --- Compartir pantalla con SELECTOR PROPIO (sin el picker de Chrome ni la
 //     barra de "estás compartiendo") + audio del sistema en Windows ---
 //
-// Cuando LiveKit llama a getDisplayMedia, Electron ejecuta este handler. En vez
-// de mostrar el picker nativo, pedimos al renderer que muestre nuestro selector
-// (ScreenPicker.svelte) y esperamos la elección.
-let pendingPick = null;
-ipcMain.on("screen:choice", (_e, choice) => {
-  if (pendingPick) { pendingPick(choice); pendingPick = null; }
+// Flujo dirigido por el renderer: el renderer pide la lista de fuentes
+// (screen:getSources), muestra NUESTRO selector, y antes de llamar a LiveKit
+// deja la elección (screen:setChoice). Cuando LiveKit llama a getDisplayMedia,
+// este handler devuelve directamente esa elección, SIN volver a preguntar.
+let nextChoice = null; // { id, audio }
+
+ipcMain.handle("screen:getSources", async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ["screen", "window"],
+    thumbnailSize: { width: 320, height: 180 },
+    fetchWindowIcons: true,
+  });
+  return sources.map((s) => ({
+    id: s.id,
+    name: s.name,
+    type: s.id.startsWith("screen:") ? "screen" : "window",
+    thumbnail: s.thumbnail && !s.thumbnail.isEmpty() ? s.thumbnail.toDataURL() : null,
+    appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+  }));
+});
+
+ipcMain.on("screen:setChoice", (_e, choice) => {
+  nextChoice = choice && choice.id ? choice : null;
 });
 
 function setupDisplayMedia() {
   session.defaultSession.setDisplayMediaRequestHandler(
     async (_request, callback) => {
       try {
-        const sources = await desktopCapturer.getSources({
-          types: ["screen", "window"],
-          thumbnailSize: { width: 320, height: 180 },
-          fetchWindowIcons: true,
-        });
-        const serial = sources.map((s) => ({
-          id: s.id,
-          name: s.name,
-          type: s.id.startsWith("screen:") ? "screen" : "window",
-          thumbnail: s.thumbnail && !s.thumbnail.isEmpty() ? s.thumbnail.toDataURL() : null,
-          appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
-        }));
-        const choice = await new Promise((resolve) => {
-          pendingPick = resolve;
-          mainWindow?.webContents.send("screen:request", serial);
-        });
-        if (!choice || !choice.id) return callback(); // cancelado
-        const source = sources.find((s) => s.id === choice.id);
+        if (!nextChoice) return callback(); // sin elección previa -> cancela
+        const sources = await desktopCapturer.getSources({ types: ["screen", "window"] });
+        const source = sources.find((s) => s.id === nextChoice.id);
+        const withAudio = nextChoice.audio && process.platform === "win32";
+        nextChoice = null;
         if (!source) return callback();
-        // audio del sistema: solo Windows soporta 'loopback' de forma fiable.
-        const withAudio = choice.audio && process.platform === "win32";
+        // 'loopback' = audio del sistema (Windows). Se pide SOLO si el usuario lo
+        // marcó, y el renderer solo lo ofrece para pantallas completas.
         callback(withAudio ? { video: source, audio: "loopback" } : { video: source });
       } catch {
         callback();
