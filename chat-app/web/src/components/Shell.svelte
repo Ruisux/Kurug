@@ -8,7 +8,7 @@
   import { playSound } from "../lib/sounds.js";
   import { applyShortcuts } from "../lib/shortcuts.js";
   import { connectMusic, disconnectMusic, musicChannelId } from "../lib/music.js";
-  import { joinVoice } from "../lib/voice.js";
+  import { joinVoice, voiceState } from "../lib/voice.js";
 
   import Rail from "./Rail.svelte";
   import ChannelList from "./ChannelList.svelte";
@@ -24,6 +24,8 @@
   let channels = [];
   let dmConvos = [];
   let online = [];
+  let voiceByChannel = {}; // channel_id -> [{id, display_name, avatar_url}]
+  let prevVoiceCid = null; // para avisar al WS al entrar/salir de una sala de voz
   let view = { kind: "none" }; // {kind:'channel', id} | {kind:'dm', user}
   let messages = [];
   let showProfile = false;
@@ -134,6 +136,17 @@
   // La música suena en la VOZ de "general" (canal donde se conecta el bot).
   $: voiceChannelId = (channels.find((c) => c.name === "general" && !c.is_music)
     || channels.find((c) => !c.is_music) || {}).id ?? null;
+
+  // Avisar al server (WS de presencia) en qué sala de voz estoy, para que el
+  // resto vea "quién está en cada canal de voz" antes de entrar.
+  $: {
+    const cid = $voiceState.active ? $voiceState.channelId : null;
+    if (cid !== prevVoiceCid) {
+      if (cid != null) presWs?.send({ type: "voice_join", channel_id: cid });
+      else presWs?.send({ type: "voice_leave" });
+      prevVoiceCid = cid;
+    }
+  }
 
   onMount(async () => {
     try {
@@ -250,10 +263,14 @@
     }
     if (evt.type === "presence_snapshot") {
       online = evt.users;
+      voiceByChannel = evt.voice || {};
     } else if (evt.type === "presence_update") {
       online = [...online.filter((u) => u.id !== evt.user.id), evt.user];
     } else if (evt.type === "presence_offline") {
       online = online.filter((u) => u.id !== evt.user_id);
+    } else if (evt.type === "voice_presence") {
+      // Mapa de ocupación de las salas de voz (claves = channel_id como texto).
+      voiceByChannel = evt.by_channel || {};
     } else if (evt.type === "dm_deleted") {
       messages = messages.filter((x) => x.id !== evt.id);
     } else if (evt.type === "dm_edited") {
@@ -384,6 +401,7 @@
       {unread}
       dms={dmConvos}
       isAdmin={$me.is_admin}
+      voiceMembers={voiceByChannel}
       onSelectChannel={openChannel}
       onSelectVoice={selectVoice}
       onSelectDm={openDm}

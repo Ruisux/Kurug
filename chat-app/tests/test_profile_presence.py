@@ -141,6 +141,34 @@ def test_presence_snapshot_and_live_events(client):
         # bob cerró la conexión; alice no recibe doble offline porque ya estaba oculto
 
 
+def test_voice_presence_join_and_leave(client):
+    """Entrar/salir de una sala de voz se difunde a todos (Fase B)."""
+    ta = token_for(client, "alice")
+    tb = token_for(client, "bob")
+
+    with client.websocket_connect(f"/ws/presence?token={ta}") as wsa:
+        snap = wsa.receive_json()
+        assert snap["type"] == "presence_snapshot"
+        assert snap["voice"] == {}  # nadie en voz todavía
+
+        with client.websocket_connect(f"/ws/presence?token={tb}") as wsb:
+            wsb.receive_json()  # snapshot de bob
+            assert wsa.receive_json()["type"] == "presence_update"  # entró bob
+
+            # bob entra a la voz del canal 7
+            wsb.send_json({"type": "voice_join", "channel_id": 7})
+            evt = wsa.receive_json()
+            assert evt["type"] == "voice_presence"
+            occupants = evt["by_channel"]["7"]
+            assert [o["display_name"] for o in occupants] == ["bob"]
+
+            # bob sale de la voz -> el canal queda vacío
+            wsb.send_json({"type": "voice_leave"})
+            evt = wsa.receive_json()
+            assert evt["type"] == "voice_presence"
+            assert evt["by_channel"] == {}
+
+
 def test_presence_rejects_bad_token(client):
     with pytest.raises(Exception):
         with client.websocket_connect("/ws/presence?token=invalido") as ws:

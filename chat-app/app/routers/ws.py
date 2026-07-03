@@ -191,6 +191,16 @@ async def presence_ws(websocket: WebSocket, token: str = Query(...)):
                 if u is not None:
                     await presence.update_profile(u)
 
+            elif kind == "voice_join":
+                # El cliente entró a la sala de voz de un canal: lo registramos
+                # para mostrar "quién está en voz" a todos.
+                cid = data.get("channel_id")
+                if isinstance(cid, int):
+                    await presence.set_voice(uid, cid)
+
+            elif kind == "voice_leave":
+                await presence.set_voice(uid, None)
+
             elif kind == "dm":
                 to = data.get("to")
                 content = (data.get("content") or "").strip()

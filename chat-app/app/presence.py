@@ -41,6 +41,35 @@ class PresenceManager:
     def __init__(self) -> None:
         self.sockets: dict[int, set[WebSocket]] = defaultdict(set)
         self.info: dict[int, dict] = {}
+        # user_id -> channel_id de la sala de voz donde está (si está en alguna).
+        # Sirve para mostrar "quién está en cada canal de voz" ANTES de entrar.
+        self.voice: dict[int, int] = {}
+
+    def voice_map(self) -> dict[int, list[dict]]:
+        """channel_id -> lista de ocupantes (visibles) de esa sala de voz."""
+        out: dict[int, list[dict]] = {}
+        for uid, cid in self.voice.items():
+            info = self.info.get(uid)
+            if not info or not _is_visible(info):
+                continue  # los invisibles no aparecen tampoco en la voz
+            out.setdefault(cid, []).append(
+                {"id": uid, "display_name": info["display_name"], "avatar_url": info["avatar_url"]}
+            )
+        return out
+
+    def _voice_message(self) -> dict:
+        return {"type": "voice_presence", "by_channel": self.voice_map()}
+
+    async def set_voice(self, user_id: int, channel_id: int | None) -> None:
+        """Marca en qué sala de voz está un usuario (o None si salió) y difunde."""
+        if channel_id is None:
+            if self.voice.pop(user_id, None) is None:
+                return  # no estaba en voz: nada que difundir
+        else:
+            if self.voice.get(user_id) == channel_id:
+                return  # sin cambios
+            self.voice[user_id] = channel_id
+        await self._broadcast(self._voice_message())
 
     def online_users(self) -> list[dict]:
         """Usuarios visibles con al menos una conexión (para el panel)."""
@@ -56,8 +85,13 @@ class PresenceManager:
         self.sockets[user.id].add(ws)
         self.info[user.id] = _info_from_user(user)
 
-        # El recién llegado recibe la foto actual de quién está conectado.
-        await ws.send_json({"type": "presence_snapshot", "users": self.online_users()})
+        # El recién llegado recibe la foto actual de quién está conectado y de
+        # quién ocupa cada sala de voz (todo en el mismo snapshot).
+        await ws.send_json({
+            "type": "presence_snapshot",
+            "users": self.online_users(),
+            "voice": self.voice_map(),
+        })
 
         # Y, si pasa a estar visible, se anuncia a los demás.
         if first_connection and _is_visible(self.info[user.id]):
@@ -72,8 +106,11 @@ class PresenceManager:
             return  # le quedan otras conexiones abiertas
         self.sockets.pop(user_id, None)
         info = self.info.pop(user_id, None)
+        in_voice = self.voice.pop(user_id, None) is not None
         if info is not None and _is_visible(info):
             await self._broadcast({"type": "presence_offline", "user_id": user_id})
+        if in_voice:
+            await self._broadcast(self._voice_message())
 
     async def set_status(self, user_id: int, status: str, custom_status=...) -> None:
         """Actualiza estado/custom_status y difunde el cambio en vivo."""
@@ -92,6 +129,9 @@ class PresenceManager:
         elif was_visible:
             # Pasó a invisible: para los demás es como desconectarse.
             await self._broadcast({"type": "presence_offline", "user_id": user_id})
+        # Si estaba en voz y cambió su visibilidad, refrescar el mapa de voz.
+        if was_visible != now_visible and user_id in self.voice:
+            await self._broadcast(self._voice_message())
 
     async def update_profile(self, user) -> None:
         """Refresca el perfil cacheado (nickname/avatar/color/estado…) y lo difunde."""
@@ -105,6 +145,8 @@ class PresenceManager:
             await self._broadcast({"type": "presence_update", "user": self.info[user.id]})
         elif was_visible:
             await self._broadcast({"type": "presence_offline", "user_id": user.id})
+        if was_visible != now_visible and user.id in self.voice:
+            await self._broadcast(self._voice_message())
 
     async def broadcast_all(self, message: dict) -> None:
         """Difunde un evento a TODAS las conexiones (p. ej. actividad de canal

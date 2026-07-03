@@ -7,6 +7,7 @@
   export let currentChannelId = null;
   export let currentDmUserId = null;
   export let unread = {};
+  export let voiceMembers = {}; // channel_id (texto) -> [{id, display_name, avatar_url}]
   export let isAdmin = false;
   export let onSelectChannel = () => {};   // canal de TEXTO -> abre chat
   export let onSelectVoice = () => {};     // canal de VOZ -> se une a la voz
@@ -124,27 +125,42 @@
     <!-- Canales de voz -->
     <div class="lbl">Voz</div>
     {#each voiceChannels as c (c.id)}
-      <div
-        class="row voice"
-        class:on={c.id === activeVoiceId}
-        class:dragover={overId === c.id}
-        class:dragging={dragId === c.id}
-        role="presentation"
-        draggable="true"
-        on:dragstart={(e) => onDragStart(e, c)}
-        on:dragover={(e) => onDragOver(e, c)}
-        on:drop={(e) => onDrop(e, c, voiceChannels)}
-        on:dragend={onDragEnd}
-        on:contextmenu={(e) => openMenu(e, c)}
-      >
-        <button class="ch" on:click={() => onSelectVoice(c.id)}>
-          <span class="hash"><i class="ti ti-volume"></i></span>{c.name}
-          {#if c.id === activeVoiceId}<span class="livedot" title="Estás aquí"></span>{/if}
-        </button>
-        {#if isAdmin}
-          <button class="x" title="Borrar canal" aria-label="Borrar canal" on:click={(e) => confirmDelete(c, e)}>
-            <i class="ti ti-trash"></i>
+      <div class="vwrap">
+        <div
+          class="row voice"
+          class:on={c.id === activeVoiceId}
+          class:dragover={overId === c.id}
+          class:dragging={dragId === c.id}
+          role="presentation"
+          draggable="true"
+          on:dragstart={(e) => onDragStart(e, c)}
+          on:dragover={(e) => onDragOver(e, c)}
+          on:drop={(e) => onDrop(e, c, voiceChannels)}
+          on:dragend={onDragEnd}
+          on:contextmenu={(e) => openMenu(e, c)}
+        >
+          <button class="ch" on:click={() => onSelectVoice(c.id)}>
+            <span class="hash"><i class="ti ti-volume"></i></span>{c.name}
+            {#if (voiceMembers[c.id] || []).length}
+              <span class="count">{(voiceMembers[c.id] || []).length}</span>
+            {/if}
+            {#if c.id === activeVoiceId}<span class="livedot" title="Estás aquí"></span>{/if}
           </button>
+          {#if isAdmin}
+            <button class="x" title="Borrar canal" aria-label="Borrar canal" on:click={(e) => confirmDelete(c, e)}>
+              <i class="ti ti-trash"></i>
+            </button>
+          {/if}
+        </div>
+        {#if (voiceMembers[c.id] || []).length}
+          <div class="vmembers">
+            {#each voiceMembers[c.id] as m (m.id)}
+              <span class="vm" title={m.display_name}>
+                <Avatar name={m.display_name} url={m.avatar_url} size={20} />
+                <span class="vm-name">{m.display_name}</span>
+              </span>
+            {/each}
+          </div>
         {/if}
       </div>
     {/each}
@@ -285,13 +301,56 @@
   .row.voice .ch:hover .hash {
     color: var(--shu);
   }
+  .count {
+    flex: none;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--field);
+    border: 1px solid var(--bd2);
+    color: var(--mut);
+    font-size: 10.5px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    margin-left: auto;
+  }
+  .vmembers {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 2px 8px 4px 24px;
+  }
+  .vm {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--mut);
+    min-width: 0;
+  }
+  .vm-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
   .livedot {
     width: 7px;
     height: 7px;
+    flex: none;
     border-radius: 50%;
     background: var(--on, #6bbf59);
-    margin-left: auto;
     box-shadow: 0 0 0 3px rgba(107, 191, 89, 0.25);
+  }
+  /* Si no hay contador (canal vacío) pero estás dentro, empuja el punto al final. */
+  .count + .livedot {
+    margin-left: 4px;
+  }
+  .ch > .livedot:not(.count + .livedot) {
+    margin-left: auto;
   }
   .ch.unread {
     color: var(--tx);
