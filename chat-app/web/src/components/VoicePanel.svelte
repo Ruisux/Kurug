@@ -55,14 +55,14 @@
       <span class="live"><i class="ti ti-broadcast"></i> En voz · {peers.length + 1}</span>
 
       <div class="chips">
-        <span class="chip" class:muted={$voiceState.muted}>
+        <span class="chip" class:muted={$voiceState.muted} class:speaking={$voiceState.meSpeaking && !$voiceState.muted}>
           <Avatar name={$me.display_name} url={$me.avatar_url} size={22} />
           tú
           {#if $voiceState.deafened}<i class="ti ti-headphones-off"></i>
           {:else if $voiceState.muted}<i class="ti ti-microphone-off"></i>{/if}
         </span>
         {#each peers as p (p.id)}
-          <span class="chip">
+          <span class="chip" class:speaking={p.speaking}>
             <Avatar name={p.name} url={p.avatar} size={22} />
             {p.name}
             {#if p.hasVideo}<i class="ti ti-device-desktop"></i>{/if}
@@ -170,6 +170,12 @@
   }
   .chip.muted {
     opacity: 0.6;
+  }
+  /* Ilumina el chip de quien está hablando (activo en el micro). */
+  .chip.speaking {
+    border-color: var(--on, #6bbf59);
+    box-shadow: 0 0 0 2px rgba(107, 191, 89, 0.45);
+    transition: box-shadow 0.1s, border-color 0.1s;
   }
   .ctrls {
     display: flex;

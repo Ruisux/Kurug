@@ -34,8 +34,9 @@ export const voiceState = writable({
   muted: false,
   deafened: false,
   sharing: false,
+  meSpeaking: false, // ilumina mi propio chip cuando hablo
   quality: get(prefs).screenQuality, // clave de SCREEN_PRESETS
-  peers: {}, // identity -> { id, name, avatar, stream, hasVideo, volume, localMuted }
+  peers: {}, // identity -> { id, name, avatar, stream, hasVideo, volume, localMuted, speaking }
   error: null,
 });
 
@@ -72,6 +73,7 @@ function publish() {
       hasVideo: !!p.video,
       volume: p.volume,
       localMuted: p.localMuted,
+      speaking: !!p.speaking,
     };
   }
   voiceState.update((s) => ({ ...s, peers: view }));
@@ -119,6 +121,7 @@ function onSubscribed(track, _pub, participant) {
     applyVol(p);
   } else if (track.kind === Track.Kind.Video) {
     p.video = new MediaStream([track.mediaStreamTrack]);
+    playSound("shareStart"); // alguien empezó a compartir su pantalla
     publish();
   }
 }
@@ -132,6 +135,7 @@ function onUnsubscribed(track, _pub, participant) {
     p.audioEl = null;
   } else if (track.kind === Track.Kind.Video) {
     p.video = null;
+    playSound("shareStop"); // alguien dejó de compartir
     publish();
   }
 }
@@ -185,6 +189,15 @@ export async function joinVoice(channelId) {
       const meta = parseMeta(pt.metadata);
       p.info.avatar_url = meta.avatar_url || p.info.avatar_url;
       p.hidden = !!meta.bot;
+      publish();
+    })
+    .on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+      // LiveKit avisa quién habla (voz por encima del umbral). Iluminamos su
+      // avatar en la barra de voz para saber de dónde vienen los sonidos.
+      const ids = new Set(speakers.map((s) => s.identity));
+      const localId = room?.localParticipant?.identity;
+      for (const p of Object.values(peers)) p.speaking = ids.has(p.id);
+      voiceState.update((s) => ({ ...s, meSpeaking: localId ? ids.has(localId) : false }));
       publish();
     })
     .on(RoomEvent.Disconnected, () => { if (get(voiceState).active) leaveVoice(); });
@@ -242,6 +255,7 @@ export async function leaveVoice() {
     muted: false,
     deafened: false,
     sharing: false,
+    meSpeaking: false,
     quality: get(voiceState).quality,
     peers: {},
     error: null,
@@ -319,6 +333,7 @@ export async function toggleShare() {
   if (sharing) {
     await room.localParticipant.setScreenShareEnabled(false);
     voiceState.update((s) => ({ ...s, sharing: false }));
+    playSound("shareStop");
     publish();
     return;
   }
@@ -326,6 +341,7 @@ export async function toggleShare() {
     const { capture, publishOpts } = screenOpts();
     await room.localParticipant.setScreenShareEnabled(true, capture, publishOpts);
     voiceState.update((s) => ({ ...s, sharing: true }));
+    playSound("shareStart");
     publish();
   } catch (e) {
     /* el usuario canceló el diálogo */
