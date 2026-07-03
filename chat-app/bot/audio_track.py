@@ -8,7 +8,13 @@ s16le 48 kHz estéreo. El bot lee bloques de 20 ms y los empuja a un
 Cuando no hay nada sonando se devuelve silencio, así la pista publicada nunca
 se cae al cambiar de canción (solo intercambiamos el subproceso de ffmpeg).
 """
+import os
 import subprocess
+
+# Ejecutable de ffmpeg. Por defecto se busca en el PATH ("ffmpeg"); como servicio
+# de Windows (LocalSystem) el PATH del sistema no siempre lo tiene, asi que se
+# puede fijar la ruta absoluta con la variable de entorno FFMPEG_BIN.
+FFMPEG = os.environ.get("FFMPEG_BIN", "ffmpeg")
 
 SAMPLE_RATE = 48000
 CHANNELS = 2
@@ -18,7 +24,7 @@ SILENCE = b"\x00" * FRAME_BYTES
 
 
 def _ffmpeg(url: str, start: float = 0.0) -> subprocess.Popen:
-    cmd = ["ffmpeg", "-nostdin"]
+    cmd = [FFMPEG, "-nostdin"]
     if start > 0:
         cmd += ["-ss", str(start)]
     cmd += [

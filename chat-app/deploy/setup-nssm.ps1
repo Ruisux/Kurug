@@ -109,7 +109,7 @@ Info "Creando servicios (rutas absolutas)"
 Set-Svc "kurug-livekit" $livekit "--config `"$livekitCfg`"" $chatApp $null $null
 Set-Svc "kurug-backend" $venvPy "-m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir `"$chatApp`"" $chatApp $null $null
 Set-Svc "kurug-bot" $botPy "`"$botScript`"" $botDir `
-    @("SECRET_KEY=$secretKey", "LIVEKIT_URL=ws://localhost:7880", "LIVEKIT_API_KEY=$lkKey", "LIVEKIT_API_SECRET=$lkSecret", "PATH=$botPath") `
+    @("SECRET_KEY=$secretKey", "LIVEKIT_URL=ws://localhost:7880", "LIVEKIT_API_KEY=$lkKey", "LIVEKIT_API_SECRET=$lkSecret", "FFMPEG_BIN=$ffmpeg", "PATH=$botPath") `
     @("kurug-backend", "kurug-livekit")
 Set-Svc "kurug-caddy" $caddy "run --config `"$caddyCfg`"" $chatApp $null $null
 
