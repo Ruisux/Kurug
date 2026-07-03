@@ -50,6 +50,17 @@ class Settings(BaseSettings):
     def smtp_configured(self) -> bool:
         return bool(self.smtp_user.strip() and self.smtp_password.strip())
 
+    # --- Registro por invitación ---
+    # Emails permitidos para registrarse, separados por comas. Si está VACÍA el
+    # registro es ABIERTO (cualquiera puede crear cuenta). Con uno o más, SOLO
+    # esos correos pueden registrarse. Las cuentas YA existentes no se ven
+    # afectadas (esto solo controla /auth/register).
+    allowed_emails: str = ""
+
+    @property
+    def allowed_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
+
     # --- LiveKit (SFU de voz/pantalla) ---
     # URL que usa el NAVEGADOR para conectarse (ws en local, wss en prod).
     livekit_url: str = "ws://localhost:7880"

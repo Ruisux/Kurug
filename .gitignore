@@ -16,6 +16,9 @@ chat-app/deploy/start-kurug.bat
 # Logs de los servicios NSSM
 /logs/
 
+# Copias de seguridad de la BD (deploy/backup-db.ps1)
+/backups/
+
 # Entornos y dependencias
 .venv/
 __pycache__/

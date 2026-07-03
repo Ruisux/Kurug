@@ -75,6 +75,13 @@ def _set_and_send_code(user: User, db: DbSession) -> None:
 @router.post("/register", response_model=RegisterOut, status_code=201)
 def register(data: UserCreate, db: DbSession):
     email = data.email.lower()
+    # Registro por invitación: si hay lista de emails permitidos, solo esos.
+    allowed = settings.allowed_email_set
+    if allowed and email not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail="El registro está limitado. Pide acceso al administrador.",
+        )
     if db.scalar(select(User).where(func.lower(User.email) == email)):
         raise HTTPException(status_code=400, detail="Ese correo ya está registrado")
     if db.scalar(select(User).where(func.lower(User.username) == data.username.lower())):

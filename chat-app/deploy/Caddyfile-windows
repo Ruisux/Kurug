@@ -15,6 +15,20 @@
 kurug.duckdns.org {
     # Caddy obtiene y renueva el certificado automáticamente (Let's Encrypt).
 
+    # Cabeceras de seguridad (se aplican a todas las respuestas).
+    header {
+        # Fuerza HTTPS en el navegador durante 1 año (evita downgrade a http).
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        # El navegador no "adivina" tipos MIME (evita algunos XSS).
+        X-Content-Type-Options "nosniff"
+        # Nadie puede embeber la app en un iframe (anti-clickjacking).
+        X-Frame-Options "DENY"
+        # No filtrar la URL completa como referer a otros sitios.
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # Oculta la cabecera Server (menos info al atacante).
+        -Server
+    }
+
     # Subidas grandes (acorde con MAX_UPLOAD_MB).
     request_body {
         max_size 2GB
