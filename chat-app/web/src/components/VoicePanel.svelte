@@ -44,9 +44,27 @@
     } catch {}
   }
 
+  // Ver la transmisión de otros es OPCIONAL (como Discord): mostramos quién
+  // comparte y tú eliges verla. Solo se renderiza el <video> de los peers que
+  // decides ver; el resto de pistas LiveKit las pausa (adaptiveStream) => sin
+  // gasto de ancho de banda por transmisiones que no miras.
+  let watching = new Set();
+  function toggleWatch(id) {
+    watching.has(id) ? watching.delete(id) : watching.add(id);
+    watching = watching; // fuerza reactividad
+  }
+
   $: peers = Object.values($voiceState.peers);
   $: videoPeers = peers.filter((p) => p.hasVideo);
-  $: hasVideo = videoPeers.length || $voiceState.sharing;
+  // Poda ids de quien dejó de compartir para no dejar recuadros fantasma.
+  $: if (videoPeers) {
+    const live = new Set(videoPeers.map((p) => p.id));
+    let changed = false;
+    for (const id of watching) if (!live.has(id)) { watching.delete(id); changed = true; }
+    if (changed) watching = watching;
+  }
+  $: watchedPeers = videoPeers.filter((p) => watching.has(p.id));
+  $: hasTiles = watchedPeers.length || $voiceState.sharing;
 </script>
 
 {#if $voiceState.active}
@@ -71,17 +89,19 @@
       </div>
 
       <div class="ctrls">
-        <select
-          class="quality"
-          value={$voiceState.quality}
-          on:change={(e) => setQuality(e.target.value)}
-          title="Calidad de la pantalla compartida (elígela antes o durante)"
-        >
-          {#each presetEntries as [key, p] (key)}
-            <option value={key}>{p.label}</option>
-          {/each}
-        </select>
-        {#if hasVideo}
+        {#if $voiceState.sharing}
+          <select
+            class="quality"
+            value={$voiceState.quality}
+            on:change={(e) => setQuality(e.target.value)}
+            title="Calidad de TU pantalla compartida"
+          >
+            {#each presetEntries as [key, p] (key)}
+              <option value={key}>{p.label}</option>
+            {/each}
+          </select>
+        {/if}
+        {#if hasTiles}
           <button on:click={() => (minimized = !minimized)} title={minimized ? "Mostrar vídeo" : "Minimizar vídeo"} aria-label="Minimizar vídeo">
             <i class="ti {minimized ? 'ti-chevron-down' : 'ti-chevron-up'}"></i>
           </button>
@@ -101,7 +121,23 @@
       </div>
     </div>
 
-    {#if hasVideo && !minimized}
+    {#if videoPeers.length}
+      <div class="shares">
+        {#each videoPeers as p (p.id)}
+          <button class="share-item" class:on={watching.has(p.id)} on:click={() => toggleWatch(p.id)}>
+            <Avatar name={p.name} url={p.avatar} size={20} />
+            <span class="share-name">{p.name}</span>
+            <span class="share-tag"><i class="ti ti-device-desktop"></i> comparte</span>
+            <span class="share-act">
+              <i class="ti {watching.has(p.id) ? 'ti-eye-off' : 'ti-eye'}"></i>
+              {watching.has(p.id) ? "Ocultar" : "Ver"}
+            </span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+
+    {#if hasTiles && !minimized}
       <div class="grid">
         {#if $voiceState.sharing}
           <div class="tile">
@@ -113,8 +149,10 @@
             </div>
           </div>
         {/if}
-        {#each videoPeers as p (p.id)}
+        {#each watchedPeers as p (p.id)}
           <div class="tile">
+            <!-- muted a propósito: el audio de la pantalla llega por una pista
+                 de audio separada de LiveKit; si no, se oiría doble. -->
             <video use:srcObject={p.stream} autoplay playsinline muted></video>
             <span class="lbl">{p.name}</span>
             <div class="tilebtns">
@@ -230,6 +268,49 @@
   .ctrls .leave:hover {
     background: var(--shu-deep);
     color: #1a0f0b;
+  }
+  .shares {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 16px 10px;
+  }
+  .share-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--pan);
+    border: 1px solid var(--bd2);
+    border-radius: 999px;
+    padding: 4px 6px 4px 4px;
+    color: var(--tx);
+    font-size: 12px;
+  }
+  .share-item:hover {
+    border-color: var(--shu);
+  }
+  .share-item.on {
+    background: rgba(var(--shu-rgb), 0.14);
+    border-color: var(--shu);
+  }
+  .share-name {
+    font-weight: 500;
+  }
+  .share-tag {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--mut);
+    font-size: 11px;
+  }
+  .share-act {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--shu);
+    font-weight: 500;
+    padding-left: 4px;
+    border-left: 1px solid var(--bd);
   }
   .grid {
     display: grid;
