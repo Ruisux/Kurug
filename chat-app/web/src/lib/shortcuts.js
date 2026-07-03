@@ -5,21 +5,19 @@
 // (p. ej. "AltLeft+ControlLeft", como el push-to-mute de Discord) y distingue
 // izquierda/derecha. Ejemplos: "ControlLeft+ShiftLeft+KeyM", "AltLeft+ControlLeft".
 //
-// - Escritorio (Tauri): si el combo es "simple" (modificadores + UNA tecla
-//   normal) se registra como atajo GLOBAL (funciona sin foco). Los combos que el
-//   plugin no soporta (solo modificadores, o específicos de izq/der) caen al
-//   listener de ventana enfocada.
+// - Escritorio (Electron): si el combo es "simple" (modificadores + UNA tecla
+//   normal) se registra como atajo GLOBAL (funciona sin foco). Los combos que
+//   globalShortcut no soporta (solo modificadores, o específicos de izq/der)
+//   caen al listener de ventana enfocada.
 // - Web: siempre por listener de ventana (solo con foco y sin estar escribiendo).
 import { get } from "svelte/store";
 import { prefs } from "./prefs.js";
 import { toggleMute, toggleDeafen } from "./voice.js";
+import { isElectron, globalShortcuts } from "./desktop.js";
 
-const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 const isMac =
   typeof navigator !== "undefined" && /mac/i.test(navigator.platform || "");
 
-let gs = null;            // módulo plugin-global-shortcut (lazy)
-let registered = [];      // aceleradores registrados globalmente
 let webCombos = [];       // combos gestionados por el listener de ventana
 let pressed = new Set();  // e.code actualmente pulsados (para combos con foco)
 let firedCode = null;     // combo que ya disparó (evita repetición por auto-repeat)
@@ -121,29 +119,6 @@ function toAccel(combo) {
   return parts.join("+");
 }
 
-async function applyTauri(entries) {
-  if (!gs) gs = await import("@tauri-apps/plugin-global-shortcut");
-  for (const a of registered) { try { await gs.unregister(a); } catch {} }
-  registered = [];
-  const focusOnly = [];
-  for (const [kind, combo] of entries) {
-    const accel = toAccel(combo);
-    if (accel) {
-      try {
-        await gs.register(accel, (ev) => {
-          if (!ev || ev.state === undefined || ev.state === "Pressed") actionFor(kind)();
-        });
-        registered.push(accel);
-        continue; // registrado global; no lo dupliques en el listener con foco
-      } catch (e) {
-        console.warn("No se pudo registrar el atajo global", accel, e);
-      }
-    }
-    focusOnly.push([kind, combo]); // solo-modificadores o falló el global
-  }
-  return focusOnly;
-}
-
 // --- Listener de ventana (combos con foco: web y fallback de escritorio) ---
 function detachWeb() {
   if (keydownH) window.removeEventListener("keydown", keydownH);
@@ -191,14 +166,33 @@ function attachWeb(entries) {
   window.addEventListener("blur", blurH);
 }
 
+// --- Atajos globales en Electron (globalShortcut vía IPC) ---
+let electronTriggerWired = false;
+async function applyElectron(entries) {
+  const toReg = [];
+  for (const [kind, combo] of entries) {
+    const accel = toAccel(combo);
+    if (accel) toReg.push({ id: kind, accel });
+  }
+  let ok = [];
+  try { ok = await globalShortcuts.register(toReg); } catch {}
+  if (!electronTriggerWired) {
+    electronTriggerWired = true;
+    globalShortcuts.onTrigger((id) => actionFor(id)());
+  }
+  const okKinds = new Set(toReg.filter((r) => ok.includes(r.accel)).map((r) => r.id));
+  // Los combos que el global no cubre (solo modificadores, izq/der) van al foco.
+  return entries.filter(([kind]) => !okKinds.has(kind));
+}
+
 // (Re)aplica los atajos según las preferencias actuales.
 export async function applyShortcuts() {
   const p = get(prefs);
   const entries = [["mute", normalize(p.muteShortcut)], ["deafen", normalize(p.deafenShortcut)]]
     .filter(([, c]) => c);
   try {
-    if (isTauri) {
-      const focusOnly = await applyTauri(entries);
+    if (isElectron) {
+      const focusOnly = await applyElectron(entries);
       attachWeb(focusOnly); // fallback con foco para lo que el global no cubre
     } else {
       attachWeb(entries);

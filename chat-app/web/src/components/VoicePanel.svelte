@@ -11,8 +11,12 @@
     localShareStream,
     SCREEN_PRESETS,
   } from "../lib/voice.js";
+  import { screenPicker } from "../lib/desktop.js";
 
   const presetEntries = Object.entries(SCREEN_PRESETS);
+  // En Electron la calidad se elige en el selector de pantalla propio; aquí solo
+  // se muestra para el picker del navegador (web/Tauri).
+  const showQualityBar = !screenPicker.supported;
 
   let minimized = false;
 
@@ -89,7 +93,7 @@
       </div>
 
       <div class="ctrls">
-        {#if $voiceState.sharing}
+        {#if $voiceState.sharing && showQualityBar}
           <select
             class="quality"
             value={$voiceState.quality}

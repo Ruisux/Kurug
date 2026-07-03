@@ -7,6 +7,7 @@
   import Login from "./components/Login.svelte";
   import Shell from "./components/Shell.svelte";
   import Titlebar from "./components/Titlebar.svelte";
+  import ScreenPicker from "./components/ScreenPicker.svelte";
 
   let booting = true;
 
@@ -53,6 +54,9 @@
     {/if}
   </div>
 </div>
+
+<!-- Selector de pantalla propio (solo actúa en Electron). -->
+<ScreenPicker />
 
 <style>
   /* Columna: barra de título (solo escritorio) + contenido que llena el resto. */

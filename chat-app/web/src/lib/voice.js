@@ -14,6 +14,8 @@ import { api } from "./api.js";
 import { prefs, setPref } from "./prefs.js";
 import { playSound } from "./sounds.js";
 import { wsBase } from "./server.js";
+import { screenPicker } from "./desktop.js";
+import { pickScreen } from "./screenshare.js";
 
 // Presets de calidad al compartir pantalla. Más opciones que solo fluido/nítido.
 // VP9 comprime mejor el texto/código que el VP8 por defecto. "res:null" = sin
@@ -320,10 +322,10 @@ export async function kickPeer(id) {
   try { await api.kickVoice(channelId, id); } catch {}
 }
 
-function screenOpts() {
+function screenOpts(wantAudio = true) {
   const p = SCREEN_PRESETS[get(voiceState).quality] || SCREEN_PRESETS.equilibrado;
   const capture = {
-    audio: true, // audio de lo presentado (depende del SO/origen)
+    audio: !!wantAudio, // audio de lo presentado (sistema); en Electron = loopback
     contentHint: p.hint,
     // El navegador da min(pantalla, este tope): en 1080p sale 1080p, etc.
     resolution: { width: p.w, height: p.h, frameRate: p.fps },
@@ -333,6 +335,36 @@ function screenOpts() {
     screenShareEncoding: { maxBitrate: p.bitrate, maxFramerate: p.fps },
   };
   return { capture, publishOpts };
+}
+
+// Publica la pantalla con la calidad y el audio elegidos (reintenta sin audio
+// del sistema si falla, para que compartir NUNCA se quede a medias).
+async function startShare(wantAudio, choice) {
+  try {
+    const { capture, publishOpts } = screenOpts(wantAudio);
+    await room.localParticipant.setScreenShareEnabled(true, capture, publishOpts);
+    voiceState.update((s) => ({ ...s, sharing: true, error: null }));
+    playSound("shareStart");
+    publish();
+    return true;
+  } catch (e) {
+    // Si falló CON audio del sistema (Electron), reintentar solo vídeo.
+    if (wantAudio && choice && !choice.native) {
+      screenPicker.setChoice({ id: choice.id, audio: false });
+      try {
+        const { capture, publishOpts } = screenOpts(false);
+        await room.localParticipant.setScreenShareEnabled(true, capture, publishOpts);
+        voiceState.update((s) => ({
+          ...s, sharing: true,
+          error: "No se pudo capturar el audio del sistema; se comparte solo vídeo.",
+        }));
+        playSound("shareStart");
+        publish();
+        return true;
+      } catch {}
+    }
+    return false; // el usuario canceló o no se pudo
+  }
 }
 
 export async function toggleShare() {
@@ -345,15 +377,19 @@ export async function toggleShare() {
     publish();
     return;
   }
-  try {
-    const { capture, publishOpts } = screenOpts();
-    await room.localParticipant.setScreenShareEnabled(true, capture, publishOpts);
-    voiceState.update((s) => ({ ...s, sharing: true }));
-    playSound("shareStart");
-    publish();
-  } catch (e) {
-    /* el usuario canceló el diálogo */
+
+  // Selector: en Electron es NUESTRO modal (fuente + calidad + audio); en
+  // web/Tauri se usa el selector del navegador.
+  const choice = await pickScreen();
+  if (choice == null) return; // cancelado en el selector propio
+
+  let wantAudio = true;
+  if (!choice.native) {
+    if (choice.quality) setQuality(choice.quality); // aplica la calidad elegida
+    wantAudio = !!choice.audio;
+    screenPicker.setChoice({ id: choice.id, audio: wantAudio });
   }
+  await startShare(wantAudio, choice);
 }
 
 export async function setQuality(q) {

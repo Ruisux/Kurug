@@ -1,33 +1,26 @@
 <script>
-  // Barra de título personalizada para la app de ESCRITORIO (Tauri).
+  // Barra de título personalizada para la app de ESCRITORIO (Electron).
   //
-  // La ventana se crea sin decoración nativa (`decorations: false` en
-  // tauri.conf.json); esta barra la sustituye: zona arrastrable + botones de
-  // ventana propios. En el navegador NO se renderiza (no hay ventana que mover).
+  // La ventana se crea sin marco nativo (frame: false); esta barra la sustituye:
+  // zona arrastrable + botones de ventana propios. En el navegador NO se
+  // renderiza (no hay ventana que mover).
   //
   // Diseño: logo 刃 + "Kurug" a la izquierda; a la derecha, tres "semáforos"
   // estilo macOS (cerrar rojo, minimizar amarillo, maximizar verde).
-  import { onMount } from "svelte";
+  import { isDesktop, windowControls } from "../lib/desktop.js";
 
-  const isTauri =
-    typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  // Se muestra solo en la app de escritorio (Electron), no en el navegador.
+  const showBar = isDesktop;
 
-  let win = null;
-  onMount(async () => {
-    if (!isTauri) return;
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    win = getCurrentWindow();
-  });
-
-  const minimize = () => win?.minimize();
-  const toggleMax = () => win?.toggleMaximize();
-  const close = () => win?.close();
+  const minimize = () => windowControls.minimize();
+  const toggleMax = () => windowControls.toggleMaximize();
+  const close = () => windowControls.close();
 </script>
 
-{#if isTauri}
-  <!-- data-tauri-drag-region: arrastrar aquí mueve la ventana. -->
-  <div class="titlebar" data-tauri-drag-region>
-    <div class="brand" data-tauri-drag-region>
+{#if showBar}
+  <!-- Arrastrar la barra mueve la ventana (CSS -webkit-app-region: drag). -->
+  <div class="titlebar">
+    <div class="brand">
       <span class="mark serif">刃</span>
       <span class="name display">Kurug</span>
     </div>
@@ -59,6 +52,7 @@
     border-bottom: 1px solid var(--bd);
     user-select: none;
     -webkit-user-select: none;
+    -webkit-app-region: drag; /* Electron: arrastrar la ventana desde la barra */
   }
   .brand {
     display: flex;
@@ -81,6 +75,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    -webkit-app-region: no-drag; /* Electron: los botones sí son clicables */
   }
   .light {
     width: 13px;
