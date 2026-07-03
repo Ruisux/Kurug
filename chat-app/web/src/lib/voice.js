@@ -222,8 +222,6 @@ export async function joinVoice(channelId) {
   if (pr.outputDeviceId) {
     try { await room.switchActiveDevice("audiooutput", pr.outputDeviceId); } catch {}
   }
-  if (micOk) applyKrisp(); // supresión de ruido avanzada (no bloquea el join)
-
   // Participantes ya presentes (sus tracks llegan por TrackSubscribed).
   room.remoteParticipants.forEach((pt) => peerFor(pt));
 
@@ -234,11 +232,17 @@ export async function joinVoice(channelId) {
     muted: !micOk,
     deafened: false,
     sharing: false,
+    meSpeaking: false,
     peers: {},
     error: micOk ? null : "Sin micrófono: estás solo escuchando.",
   }));
   playSound("join"); // sonido al ENTRAR tú a la voz
   publish();
+
+  // Supresión de ruido avanzada (Krisp): se aplica DESPUÉS de mostrar la UI,
+  // pero esperando de verdad a que la pista esté lista, para que quede activa al
+  // entrar (antes a veces "parecía activa" y no lo estaba hasta re-togglearla).
+  if (micOk) await applyKrisp();
 }
 
 export async function leaveVoice() {
@@ -248,6 +252,10 @@ export async function leaveVoice() {
     room = null;
   }
   peers = {};
+  // El procesador de Krisp queda atado a la pista/sala de esta sesión; lo
+  // descartamos para que el próximo join cree uno limpio (evita fallos al
+  // reaplicarlo sobre una sala ya cerrada).
+  krispProcessor = null;
   if (audioBin) { audioBin.remove(); audioBin = null; }
   voiceState.set({
     active: false,
@@ -431,28 +439,58 @@ let krispMod = null;       // módulo cargado bajo demanda (trae WASM, ~MB)
 let krispProcessor = null; // instancia reutilizable
 export let krispSupported = true;
 
-async function loadKrisp() {
+export async function loadKrisp() {
   if (!krispMod) krispMod = await import("@livekit/krisp-noise-filter");
   return krispMod;
 }
 
+// Precarga el WASM de Krisp en segundo plano (al abrir la app), para que al
+// entrar a la voz el filtro se pueda aplicar YA, sin la demora de la descarga
+// que hacía que "pareciera activo pero no lo estuviera" hasta re-togglearlo.
+export function preloadKrisp() {
+  loadKrisp().catch(() => {});
+}
+
+// Espera a que la pista del micro esté publicada (tras setMicrophoneEnabled la
+// publicación puede tardar un instante en aparecer). Reintenta unas veces.
+async function micTrack(tries = 10) {
+  for (let i = 0; i < tries; i++) {
+    const t = room?.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+    if (t) return t;
+    await new Promise((r) => setTimeout(r, 60));
+  }
+  return null;
+}
+
 // Aplica o quita el filtro Krisp en la pista del micro según la preferencia.
+// Devuelve true si quedó aplicado. Es robusto ante reintentos y procesadores
+// obsoletos: si `setProcessor` falla, recrea el procesador y vuelve a intentar.
 async function applyKrisp() {
-  if (!room) return;
-  const track = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
-  if (!track) return;
+  if (!room) return false;
   const want = get(prefs).krisp;
+  const track = await micTrack();
+  if (!track) return false;
   try {
     const mod = await loadKrisp();
     krispSupported = !mod.isKrispNoiseFilterSupported || mod.isKrispNoiseFilterSupported();
     if (want && krispSupported) {
       if (!krispProcessor) krispProcessor = mod.KrispNoiseFilter();
-      await track.setProcessor(krispProcessor);
+      try {
+        await track.setProcessor(krispProcessor);
+      } catch {
+        // El procesador puede haber quedado atado a una sala/pista anterior;
+        // recrearlo desde cero y reintentar una vez.
+        try { krispProcessor = mod.KrispNoiseFilter(); await track.setProcessor(krispProcessor); }
+        catch { return false; }
+      }
+      return true;
     } else {
       try { await track.stopProcessor(); } catch {}
+      return false;
     }
   } catch {
     krispSupported = false;
+    return false;
   }
 }
 

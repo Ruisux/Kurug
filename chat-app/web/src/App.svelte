@@ -3,12 +3,14 @@
   import { get } from "svelte/store";
   import { token, me } from "./lib/stores.js";
   import { api } from "./lib/api.js";
+  import { preloadKrisp } from "./lib/voice.js";
   import Login from "./components/Login.svelte";
   import Shell from "./components/Shell.svelte";
 
   let booting = true;
 
   onMount(async () => {
+    preloadKrisp(); // descarga el WASM de Krisp en segundo plano (no bloquea)
     if (get(token)) {
       try {
         me.set(await api.me());
