@@ -24,6 +24,7 @@
   let channels = [];
   let dmConvos = [];
   let online = [];
+  let allUsers = []; // todos los miembros (conectados y no) para el panel de personas
   let voiceByChannel = {}; // channel_id -> [{id, display_name, avatar_url}]
   let prevVoiceCid = null; // para avisar al WS al entrar/salir de una sala de voz
   let view = { kind: "none" }; // {kind:'channel', id} | {kind:'dm', user}
@@ -137,6 +138,16 @@
   $: voiceChannelId = (channels.find((c) => c.name === "general" && !c.is_music)
     || channels.find((c) => !c.is_music) || {}).id ?? null;
 
+  // usuario_id -> nombre del canal de voz donde está (para el panel de personas).
+  $: userVoice = (() => {
+    const m = {};
+    for (const [cid, members] of Object.entries(voiceByChannel)) {
+      const name = channels.find((c) => String(c.id) === String(cid))?.name;
+      for (const u of members) m[u.id] = name || "voz";
+    }
+    return m;
+  })();
+
   // Avisar al server (WS de presencia) en qué sala de voz estoy, para que el
   // resto vea "quién está en cada canal de voz" antes de entrar.
   $: {
@@ -152,6 +163,7 @@
     try {
       channels = await api.channels();
       dmConvos = await api.dmConversations();
+      allUsers = await api.users();
     } catch {}
     // Sembrar contadores de no leídos según lo último leído (localStorage).
     try {
@@ -266,6 +278,10 @@
       voiceByChannel = evt.voice || {};
     } else if (evt.type === "presence_update") {
       online = [...online.filter((u) => u.id !== evt.user.id), evt.user];
+      // Si es un miembro que aún no teníamos (registro reciente), recargar lista.
+      if (!allUsers.some((u) => u.id === evt.user.id)) {
+        api.users().then((us) => (allUsers = us)).catch(() => {});
+      }
     } else if (evt.type === "presence_offline") {
       online = online.filter((u) => u.id !== evt.user_id);
     } else if (evt.type === "voice_presence") {
@@ -418,7 +434,7 @@
     {/if}
   </div>
   <div class="aside-wrap">
-    <PresencePanel {online} onSelectUser={openDm} />
+    <PresencePanel {online} {allUsers} {userVoice} onSelectUser={openDm} />
   </div>
 </div>
 
