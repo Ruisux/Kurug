@@ -19,7 +19,8 @@ from fastapi import status
 from ..deps import DbSession, CurrentUser
 from ..models import Channel, Message, Reaction
 from ..schemas import (
-    ChannelCreate, ChannelOut, MessageOut, ReplyPreview, ReactionGroup, UnreadQuery,
+    ChannelCreate, ChannelReorder, ChannelOut, MessageOut, ReplyPreview,
+    ReactionGroup, UnreadQuery,
 )
 
 router = APIRouter(prefix="/channels", tags=["channels"])
@@ -33,10 +34,12 @@ def list_channels(db: DbSession, user: CurrentUser):
             select(Message.channel_id, func.max(Message.id)).group_by(Message.channel_id)
         ).all()
     )
-    channels = db.scalars(select(Channel).order_by(Channel.name)).all()
+    # Orden por posición (arrastre) y, a igualdad, por nombre.
+    channels = db.scalars(select(Channel).order_by(Channel.position, Channel.name)).all()
     return [
         ChannelOut(
             id=c.id, name=c.name, is_music=c.is_music,
+            kind=c.kind, position=c.position,
             last_message_id=last_ids.get(c.id),
         )
         for c in channels
@@ -74,7 +77,9 @@ def create_channel(data: ChannelCreate, db: DbSession, user: CurrentUser):
     if exists:
         raise HTTPException(status_code=400, detail="El canal ya existe")
 
-    channel = Channel(name=data.name)
+    # Se crea al final de la lista (mayor position + 1).
+    max_pos = db.scalar(select(func.max(Channel.position)))
+    channel = Channel(name=data.name, kind=data.kind, position=(max_pos or 0) + 1)
     db.add(channel)
     try:
         db.commit()
@@ -84,6 +89,27 @@ def create_channel(data: ChannelCreate, db: DbSession, user: CurrentUser):
         raise HTTPException(status_code=400, detail="El canal ya existe")
     db.refresh(channel)
     return channel
+
+
+@router.patch("/reorder", response_model=list[ChannelOut])
+def reorder_channels(payload: ChannelReorder, db: DbSession, user: CurrentUser):
+    """Reordena los canales según la lista de ids recibida.
+
+    La posición es GLOBAL (compartida por todos): cualquier usuario autenticado
+    puede reordenar, como en un grupo pequeño de confianza. Los ids no incluidos
+    conservan su posición relativa al final.
+    """
+    channels = {c.id: c for c in db.scalars(select(Channel)).all()}
+    for i, cid in enumerate(payload.order):
+        c = channels.get(cid)
+        if c is not None:
+            c.position = i
+    db.commit()
+    listed = db.scalars(select(Channel).order_by(Channel.position, Channel.name)).all()
+    return [
+        ChannelOut(id=c.id, name=c.name, is_music=c.is_music, kind=c.kind, position=c.position)
+        for c in listed
+    ]
 
 
 @router.delete("/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)

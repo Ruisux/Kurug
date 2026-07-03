@@ -101,6 +101,13 @@ class Token(BaseModel):
 
 class ChannelCreate(BaseModel):
     name: str = Field(min_length=1, max_length=64)
+    # "text" (chat) o "voice" (sala de voz). Por defecto, texto.
+    kind: Literal["text", "voice"] = "text"
+
+
+class ChannelReorder(BaseModel):
+    """Nuevo orden de los canales: lista de ids en el orden deseado."""
+    order: list[int]
 
 
 class UnreadQuery(BaseModel):
@@ -113,6 +120,8 @@ class ChannelOut(BaseModel):
     id: int
     name: str
     is_music: bool = False
+    kind: str = "text"
+    position: int = 0
     # id del último mensaje del canal (para calcular no leídos al cargar).
     last_message_id: int | None = None
 

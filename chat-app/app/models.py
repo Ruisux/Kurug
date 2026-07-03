@@ -7,7 +7,7 @@ Un DM va de un usuario (sender) a otro (recipient).
 """
 from datetime import datetime
 
-from sqlalchemy import String, Text, ForeignKey, DateTime, Boolean, UniqueConstraint, func
+from sqlalchemy import String, Text, Integer, ForeignKey, DateTime, Boolean, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -66,6 +66,10 @@ class Channel(Base):
     )
     # Canal especial: muestra el reproductor de música en vez del chat normal.
     is_music: Mapped[bool] = mapped_column(Boolean, server_default="0")
+    # Tipo de canal: "text" (chat) o "voice" (sala de voz, sin chat propio).
+    kind: Mapped[str] = mapped_column(String(8), server_default="text")
+    # Orden en la lista (menor = más arriba). Se reordena por arrastre.
+    position: Mapped[int] = mapped_column(Integer, server_default="0")
 
     messages: Mapped[list["Message"]] = relationship(back_populates="channel")
 

@@ -102,7 +102,8 @@ export const api = {
   gifsSearch: (q) => req("GET", `/gifs/search?q=${encodeURIComponent(q)}`),
 
   channels: () => req("GET", "/channels"),
-  createChannel: (name) => req("POST", "/channels", { json: { name } }),
+  createChannel: (name, kind = "text") => req("POST", "/channels", { json: { name, kind } }),
+  reorderChannels: (order) => req("PATCH", "/channels/reorder", { json: { order } }),
   deleteChannel: (id) => req("DELETE", `/channels/${id}`),
   messages: (channelId, limit = 50) =>
     req("GET", `/channels/${channelId}/messages?limit=${limit}`),

@@ -8,6 +8,7 @@
   import { playSound } from "../lib/sounds.js";
   import { applyShortcuts } from "../lib/shortcuts.js";
   import { connectMusic, disconnectMusic, musicChannelId } from "../lib/music.js";
+  import { joinVoice } from "../lib/voice.js";
 
   import Rail from "./Rail.svelte";
   import ChannelList from "./ChannelList.svelte";
@@ -149,7 +150,8 @@
     const musicCh = channels.find((c) => c.is_music);
     if (musicCh) connectMusic(musicCh.id);
     if (channels.length) {
-      const first = channels.find((c) => !c.is_music) || channels[0];
+      const first = channels.find((c) => c.kind !== "voice" && !c.is_music)
+        || channels.find((c) => c.kind !== "voice") || channels[0];
       openChannel(first.id);
     }
     // En móvil arrancamos mostrando la lista, no la conversación.
@@ -316,12 +318,33 @@
     else if (view.kind === "dm") presWs?.send({ type: "dm_react", id, emoji });
   }
 
-  async function createChannel(name) {
+  async function createChannel(name, kind = "text") {
     try {
-      const c = await api.createChannel(name);
-      channels = [...channels, c].sort((a, b) => a.name.localeCompare(b.name));
-      openChannel(c.id);
+      const c = await api.createChannel(name, kind);
+      // El backend asigna position al final; respetamos el orden que devuelve.
+      channels = [...channels, c].sort((a, b) => (a.position - b.position) || a.name.localeCompare(b.name));
+      if (kind === "voice") joinVoice(c.id); // un canal de voz se "abre" uniéndote
+      else openChannel(c.id);
     } catch {}
+  }
+
+  // Seleccionar un canal de VOZ = unirse a su sala (no abre chat).
+  function selectVoice(id) {
+    joinVoice(id);
+  }
+
+  // Reordena de forma optimista y persiste el nuevo orden en el server.
+  async function reorderChannels(orderedIds) {
+    const pos = new Map(orderedIds.map((id, i) => [id, i]));
+    channels = [...channels].sort(
+      (a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9),
+    );
+    try {
+      await api.reorderChannels(orderedIds);
+    } catch {
+      // Si falla, recargamos el orden real del server.
+      try { channels = await api.channels(); } catch {}
+    }
   }
 
   async function deleteChannel(id) {
@@ -351,7 +374,7 @@
       musicActive={isMusicChannel}
       onProfile={() => (showProfile = true)}
       onAudio={() => (showAudio = true)}
-      onHome={() => { const c = channels.find((x) => !x.is_music) || channels[0]; if (c) openChannel(c.id); }}
+      onHome={() => { const c = channels.find((x) => x.kind !== "voice" && !x.is_music) || channels.find((x) => x.kind !== "voice") || channels[0]; if (c) openChannel(c.id); }}
       onMusic={() => $musicChannelId != null && openChannel($musicChannelId)}
     />
     <ChannelList
@@ -362,9 +385,11 @@
       dms={dmConvos}
       isAdmin={$me.is_admin}
       onSelectChannel={openChannel}
+      onSelectVoice={selectVoice}
       onSelectDm={openDm}
       onCreate={createChannel}
       onDeleteChannel={deleteChannel}
+      onReorder={reorderChannels}
     />
   </div>
   <div class="main">
