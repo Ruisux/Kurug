@@ -6,6 +6,7 @@
   import { preloadKrisp } from "./lib/voice.js";
   import Login from "./components/Login.svelte";
   import Shell from "./components/Shell.svelte";
+  import Titlebar from "./components/Titlebar.svelte";
 
   let booting = true;
 
@@ -40,15 +41,31 @@
   $: if ($me?.accent_color) applyAccent($me.accent_color);
 </script>
 
-{#if booting}
-  <div class="boot serif">刃</div>
-{:else if $token && $me}
-  <Shell />
-{:else}
-  <Login />
-{/if}
+<div class="root">
+  <Titlebar />
+  <div class="content">
+    {#if booting}
+      <div class="boot serif">刃</div>
+    {:else if $token && $me}
+      <Shell />
+    {:else}
+      <Login />
+    {/if}
+  </div>
+</div>
 
 <style>
+  /* Columna: barra de título (solo escritorio) + contenido que llena el resto. */
+  .root {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .content {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+  }
   .boot {
     height: 100%;
     display: flex;
