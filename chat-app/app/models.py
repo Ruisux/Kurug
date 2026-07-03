@@ -60,7 +60,10 @@ class Channel(Base):
     __tablename__ = "channels"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # El nombre es único POR TIPO (ver __table_args__), no global: así puede
+    # existir a la vez un canal de texto y uno de voz con el mismo nombre
+    # (p. ej. #general y 🔊general), como en Discord.
+    name: Mapped[str] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -70,6 +73,10 @@ class Channel(Base):
     kind: Mapped[str] = mapped_column(String(8), server_default="text")
     # Orden en la lista (menor = más arriba). Se reordena por arrastre.
     position: Mapped[int] = mapped_column(Integer, server_default="0")
+
+    __table_args__ = (
+        UniqueConstraint("name", "kind", name="uq_channels_name_kind"),
+    )
 
     messages: Mapped[list["Message"]] = relationship(back_populates="channel")
 

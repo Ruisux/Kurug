@@ -73,9 +73,13 @@ def unread_counts(payload: UnreadQuery, db: DbSession, user: CurrentUser):
 
 @router.post("", response_model=ChannelOut, status_code=201)
 def create_channel(data: ChannelCreate, db: DbSession, user: CurrentUser):
-    exists = db.scalar(select(Channel).where(Channel.name == data.name))
+    # El nombre solo colisiona con otro canal DEL MISMO TIPO (texto/voz).
+    exists = db.scalar(
+        select(Channel).where(Channel.name == data.name, Channel.kind == data.kind)
+    )
     if exists:
-        raise HTTPException(status_code=400, detail="El canal ya existe")
+        tipo = "voz" if data.kind == "voice" else "texto"
+        raise HTTPException(status_code=400, detail=f"Ya existe un canal de {tipo} con ese nombre")
 
     # Se crea al final de la lista (mayor position + 1).
     max_pos = db.scalar(select(func.max(Channel.position)))
@@ -84,9 +88,11 @@ def create_channel(data: ChannelCreate, db: DbSession, user: CurrentUser):
     try:
         db.commit()
     except IntegrityError:
-        # Otro request creó el mismo canal entre el check y el commit.
+        # Otro request creó el mismo canal (mismo nombre y tipo) entre el check
+        # y el commit.
         db.rollback()
-        raise HTTPException(status_code=400, detail="El canal ya existe")
+        tipo = "voz" if data.kind == "voice" else "texto"
+        raise HTTPException(status_code=400, detail=f"Ya existe un canal de {tipo} con ese nombre")
     db.refresh(channel)
     return channel
 
