@@ -5,24 +5,41 @@
     listAudioDevices, setInputDevice, setOutputDevice, refreshMicConstraints, setKrisp,
   } from "../lib/voice.js";
   import { playSound } from "../lib/sounds.js";
-  import { applyShortcuts, comboFromEvent, prettyCombo } from "../lib/shortcuts.js";
+  import { applyShortcuts, codeCombo, prettyCombo } from "../lib/shortcuts.js";
 
   export let onClose = () => {};
 
   // --- Atajos de teclado ---
+  // Capturamos el ACORDE completo (todas las teclas mantenidas) para permitir
+  // combos solo de modificadores, p. ej. Alt + Ctrl izquierdo. Se registra el
+  // "pico" (máximo de teclas pulsadas) y se confirma al soltar todas.
   let capturing = null; // "muteShortcut" | "deafenShortcut" | null
+  let capHeld = new Set();
+  let capPeak = new Set();
+  let capDisplay = "";
   function startCapture(key) {
     capturing = key;
+    capHeld = new Set();
+    capPeak = new Set();
+    capDisplay = "Pulsa una combinación…";
   }
-  function onCaptureKey(e, key) {
+  function onCaptureDown(e, key) {
     if (capturing !== key) return;
     e.preventDefault();
-    if (e.key === "Escape") { capturing = null; return; }
-    const combo = comboFromEvent(e);
-    if (!combo) return; // solo modificador: seguir esperando
-    setPref(key, combo);
-    capturing = null;
-    applyShortcuts();
+    if (e.code === "Escape") { capturing = null; return; }
+    capHeld.add(e.code);
+    capPeak.add(e.code);
+    capDisplay = prettyCombo(codeCombo([...capPeak]));
+  }
+  function onCaptureUp(e, key) {
+    if (capturing !== key) return;
+    e.preventDefault();
+    capHeld.delete(e.code);
+    if (capHeld.size === 0 && capPeak.size) {
+      setPref(key, codeCombo([...capPeak]));
+      capturing = null;
+      applyShortcuts();
+    }
   }
   function clearShortcut(key) {
     setPref(key, "");
@@ -292,8 +309,9 @@
         <!-- svelte-ignore a11y-no-static-element-interactions -->
         <button class="sc-key" class:capturing={capturing === "muteShortcut"}
           on:click={() => startCapture("muteShortcut")}
-          on:keydown={(e) => onCaptureKey(e, "muteShortcut")}>
-          {capturing === "muteShortcut" ? "Pulsa una combinación…" : prettyCombo($prefs.muteShortcut)}
+          on:keydown={(e) => onCaptureDown(e, "muteShortcut")}
+          on:keyup={(e) => onCaptureUp(e, "muteShortcut")}>
+          {capturing === "muteShortcut" ? capDisplay : prettyCombo($prefs.muteShortcut)}
         </button>
         <button class="sc-clear" on:click={() => clearShortcut("muteShortcut")} title="Quitar" aria-label="Quitar"><i class="ti ti-x"></i></button>
       </div>
@@ -301,8 +319,9 @@
         <span class="sc-label">Ensordecer</span>
         <button class="sc-key" class:capturing={capturing === "deafenShortcut"}
           on:click={() => startCapture("deafenShortcut")}
-          on:keydown={(e) => onCaptureKey(e, "deafenShortcut")}>
-          {capturing === "deafenShortcut" ? "Pulsa una combinación…" : prettyCombo($prefs.deafenShortcut)}
+          on:keydown={(e) => onCaptureDown(e, "deafenShortcut")}
+          on:keyup={(e) => onCaptureUp(e, "deafenShortcut")}>
+          {capturing === "deafenShortcut" ? capDisplay : prettyCombo($prefs.deafenShortcut)}
         </button>
         <button class="sc-clear" on:click={() => clearShortcut("deafenShortcut")} title="Quitar" aria-label="Quitar"><i class="ti ti-x"></i></button>
       </div>

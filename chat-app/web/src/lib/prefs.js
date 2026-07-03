@@ -16,16 +16,37 @@ const defaults = {
   notificationSound: true,  // sonido al recibir mensajes/menciones
   botVolume: 100,           // volumen local de la música (0-200)
   screenQuality: "equilibrado", // preset de calidad al compartir pantalla
-  // Atajos de teclado (formato acelerador de Tauri, p. ej. "CommandOrControl+Shift+M").
-  // En escritorio son GLOBALES (funcionan con la app en segundo plano); en web,
-  // solo con la ventana enfocada y sin estar escribiendo.
-  muteShortcut: "CommandOrControl+Shift+M",
-  deafenShortcut: "CommandOrControl+Shift+D",
+  // Atajos de teclado (formato por `code`, p. ej. "ControlLeft+ShiftLeft+KeyM").
+  // Permite combos solo de modificadores (Alt+Ctrl izq) y distingue izq/der.
+  // En escritorio los combos "simples" son GLOBALES; el resto funciona con foco.
+  muteShortcut: "ControlLeft+ShiftLeft+KeyM",
+  deafenShortcut: "ControlLeft+ShiftLeft+KeyD",
 };
+
+// Convierte los atajos del formato antiguo (acelerador de Tauri, p. ej.
+// "CommandOrControl+Shift+M") al nuevo formato por `code`. Solo para migrar
+// valores ya guardados en localStorage; a futuro todo se guarda ya migrado.
+function migrateShortcut(v) {
+  if (typeof v !== "string" || !v) return v;
+  if (/Left|Right|Key|Digit|Numpad/.test(v)) return v; // ya está en el nuevo formato
+  const mac = /mac/i.test((typeof navigator !== "undefined" && navigator.platform) || "");
+  return v.split("+").map((part) => {
+    if (part === "CommandOrControl" || part === "Command" || part === "Ctrl") return mac ? "MetaLeft" : "ControlLeft";
+    if (part === "Alt") return "AltLeft";
+    if (part === "Shift") return "ShiftLeft";
+    if (part === "Space") return "Space";
+    if (/^[A-Z]$/.test(part)) return "Key" + part;
+    if (/^[0-9]$/.test(part)) return "Digit" + part;
+    return part;
+  }).join("+");
+}
 
 function load() {
   try {
-    return { ...defaults, ...(JSON.parse(localStorage.getItem(KEY)) || {}) };
+    const saved = { ...defaults, ...(JSON.parse(localStorage.getItem(KEY)) || {}) };
+    saved.muteShortcut = migrateShortcut(saved.muteShortcut);
+    saved.deafenShortcut = migrateShortcut(saved.deafenShortcut);
+    return saved;
   } catch {
     return { ...defaults };
   }
