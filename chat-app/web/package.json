@@ -4,6 +4,7 @@
   "version": "0.2.0",
   "description": "Kurug — chat, voz y compartir pantalla auto-hospedado.",
   "author": "Ruisux",
+  "homepage": "https://github.com/Ruisux/Kurug",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {

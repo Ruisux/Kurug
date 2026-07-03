@@ -11,10 +11,12 @@ files:
   - package.json
 
 # Auto-update por GitHub Releases (electron-updater lee latest.yml del release).
+# releaseType: release -> publica el release directamente (no como borrador).
 publish:
   provider: github
   owner: Ruisux
   repo: Kurug
+  releaseType: release
 
 win:
   target: nsis
@@ -32,6 +34,6 @@ mac:
 linux:
   target:
     - AppImage
-    - deb
   icon: electron/icons/icon.png
   category: Network
+  maintainer: Ruisux
