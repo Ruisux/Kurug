@@ -32,22 +32,27 @@
   <ellipse cx="86" cy="26" rx="1.4" ry="6" fill="#3a2d22" />
   <rect x="90" y="22" width="7" height="8.5" rx="1.5" fill="#9a9488" />
 
+  <!-- Hoja: lomo (mune) que sube hacia la punta, filo curvo abajo y kissaki fino. -->
   <path
-    d="M97 22.5 C190 15 290 13 351 14.5 L353 16.5 C290 18 190 23.5 97 29.5 Z"
+    d="M97 21.6 C175 17.2 275 14.4 344 13.4 L356 16.1 C320 18.6 200 24.6 97 29.4 Z"
     fill="#c7c0b3"
   />
+  <!-- Yokote: línea corta que delimita la punta (kissaki). -->
+  <path d="M344 13.7 L347 17.9" stroke="#8f887b" stroke-width="0.7" opacity="0.55" fill="none" />
+  <!-- Shinogi: cresta junto al lomo. -->
   <path
-    d="M99 22.8 C190 15.6 290 13.8 350 15.2"
+    d="M100 22.9 C180 18.9 275 16.1 344 14.5"
     stroke="#efe9dc"
-    stroke-width="0.6"
-    opacity="0.55"
+    stroke-width="0.5"
+    opacity="0.4"
     fill="none"
   />
+  <!-- Hamon: línea de temple junto al filo. -->
   <path
-    d="M103 27.6 C190 21.5 288 18 347 15.8"
+    d="M103 27.4 C190 22.4 290 18.6 348 15.7"
     stroke="#efe9dc"
-    stroke-width="0.7"
-    opacity="0.4"
+    stroke-width="0.8"
+    opacity="0.45"
     fill="none"
   />
 </svg>

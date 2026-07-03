@@ -1,14 +1,13 @@
 <script>
   import { tick, onMount } from "svelte";
-  import { get } from "svelte/store";
   import Avatar from "./Avatar.svelte";
   import VoicePanel from "./VoicePanel.svelte";
   import EmojiPicker from "./EmojiPicker.svelte";
   import GifPicker from "./GifPicker.svelte";
   import { formatTime } from "../lib/ui.js";
-  import { token, me } from "../lib/stores.js";
+  import { me } from "../lib/stores.js";
   import { api } from "../lib/api.js";
-  import { voiceState, joinVoice } from "../lib/voice.js";
+  import { voiceState } from "../lib/voice.js";
   import { mediaUrl } from "../lib/server.js";
 
   export let header = { kind: "none", name: "—" };
@@ -114,9 +113,6 @@
   // Cierra búsqueda/paneles al cambiar de canal/DM.
   $: header, (searchOpen = false), (searchQuery = ""), (searchResults = []),
      (pinsOpen = false), (gifOpen = false);
-  function joinVoz() {
-    if (channelId != null) joinVoice(channelId, get(token), $me.id);
-  }
 
   let draft = "";
   let scroller;
@@ -417,11 +413,6 @@
           <i class="ti ti-search"></i>
         </button>
       {/if}
-      {#if isChannel && !inThisVoice}
-        <button class="voz" on:click={joinVoz}>
-          <i class="ti ti-headphones"></i> Voz
-        </button>
-      {/if}
     </div>
   </header>
 
@@ -691,11 +682,12 @@
   }
   .wm {
     position: absolute;
-    right: 10px;
-    bottom: -50px;
-    font-size: 280px;
+    right: -20px;
+    bottom: -90px;
+    /* Más grande para que se aprecie, pero sigue muy sutil (baja opacidad). */
+    font-size: clamp(320px, 52vh, 520px);
     color: var(--tx);
-    opacity: 0.03;
+    opacity: 0.05;
     pointer-events: none;
     user-select: none;
     line-height: 1;
@@ -731,22 +723,6 @@
     .back {
       display: flex;
     }
-  }
-  .voz {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12.5px;
-    color: var(--mut);
-    background: var(--pan);
-    border: 1px solid var(--bd2);
-    border-radius: 9px;
-    padding: 6px 11px;
-  }
-  .voz:hover {
-    color: var(--shu);
-    border-color: var(--shu);
   }
   .hdr-actions {
     display: flex;
