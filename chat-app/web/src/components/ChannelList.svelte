@@ -184,17 +184,23 @@
 
     <div class="new">
       <div class="kindpick" role="group" aria-label="Tipo de canal">
-        <button class="kb" class:on={newKind === "text"} on:click={() => (newKind = "text")} title="Canal de texto" aria-label="Canal de texto"><i class="ti ti-hash"></i></button>
-        <button class="kb" class:on={newKind === "voice"} on:click={() => (newKind = "voice")} title="Canal de voz" aria-label="Canal de voz"><i class="ti ti-volume"></i></button>
+        <button class="kb" class:on={newKind === "text"} on:click={() => (newKind = "text")}>
+          <i class="ti ti-hash"></i> Texto
+        </button>
+        <button class="kb" class:on={newKind === "voice"} on:click={() => (newKind = "voice")}>
+          <i class="ti ti-volume"></i> Voz
+        </button>
       </div>
-      <input
-        placeholder={newKind === "voice" ? "nuevo canal de voz" : "nuevo canal"}
-        bind:value={newName}
-        on:keydown={(e) => e.key === "Enter" && create()}
-      />
-      <button class="add" on:click={create} aria-label="Crear canal">
-        <i class="ti ti-plus"></i>
-      </button>
+      <div class="newrow">
+        <input
+          placeholder={newKind === "voice" ? "nuevo canal de voz" : "nuevo canal"}
+          bind:value={newName}
+          on:keydown={(e) => e.key === "Enter" && create()}
+        />
+        <button class="add" on:click={create} aria-label="Crear canal">
+          <i class="ti ti-plus"></i>
+        </button>
+      </div>
     </div>
   </div>
 </aside>
@@ -407,30 +413,38 @@
     margin-top: auto;
     padding-top: 10px;
     display: flex;
-    gap: 6px;
-    align-items: center;
+    flex-direction: column;
+    gap: 7px;
   }
+  /* Selector de tipo: segmentado a ancho completo, en su propia fila. */
   .kindpick {
     display: flex;
-    flex: none;
     border: 1px solid var(--bd2);
     border-radius: 9px;
     overflow: hidden;
   }
   .kb {
-    width: 28px;
-    height: 34px;
+    flex: 1;
+    height: 32px;
     border: none;
     background: transparent;
     color: var(--mut);
-    font-size: 14px;
+    font-size: 12.5px;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 5px;
+  }
+  .kb + .kb {
+    border-left: 1px solid var(--bd2);
   }
   .kb.on {
     background: rgba(var(--shu-rgb), 0.16);
     color: var(--shu);
+  }
+  .newrow {
+    display: flex;
+    gap: 6px;
   }
   .new input {
     flex: 1;
