@@ -1,0 +1,38 @@
+appId: com.kurug.app
+productName: Kurug
+
+directories:
+  output: release
+  buildResources: build
+
+# Qué se empaqueta (los node_modules de producción se incluyen solos).
+files:
+  - electron/**/*
+  - dist/**/*
+  - package.json
+
+# Auto-update por GitHub Releases (electron-updater lee latest.yml del release).
+publish:
+  provider: github
+  owner: Ruisux
+  repo: Kurug
+
+win:
+  target: nsis
+  icon: src-tauri/icons/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+mac:
+  target: dmg
+  icon: src-tauri/icons/icon.icns
+  category: public.app-category.social-networking
+
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: src-tauri/icons/128x128.png
+  category: Network

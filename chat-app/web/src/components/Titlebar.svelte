@@ -7,25 +7,19 @@
   //
   // Diseño: logo 刃 + "Kurug" a la izquierda; a la derecha, tres "semáforos"
   // estilo macOS (cerrar rojo, minimizar amarillo, maximizar verde).
-  import { onMount } from "svelte";
+  import { isDesktop, windowControls } from "../lib/desktop.js";
 
-  const isTauri =
-    typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  // Se muestra en la app de escritorio (Electron o Tauri), no en el navegador.
+  const showBar = isDesktop;
 
-  let win = null;
-  onMount(async () => {
-    if (!isTauri) return;
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    win = getCurrentWindow();
-  });
-
-  const minimize = () => win?.minimize();
-  const toggleMax = () => win?.toggleMaximize();
-  const close = () => win?.close();
+  const minimize = () => windowControls.minimize();
+  const toggleMax = () => windowControls.toggleMaximize();
+  const close = () => windowControls.close();
 </script>
 
-{#if isTauri}
-  <!-- data-tauri-drag-region: arrastrar aquí mueve la ventana. -->
+{#if showBar}
+  <!-- data-tauri-drag-region: arrastrar aquí mueve la ventana (Tauri). En
+       Electron el arrastre se hace con CSS (-webkit-app-region: drag). -->
   <div class="titlebar" data-tauri-drag-region>
     <div class="brand" data-tauri-drag-region>
       <span class="mark serif">刃</span>
@@ -59,6 +53,7 @@
     border-bottom: 1px solid var(--bd);
     user-select: none;
     -webkit-user-select: none;
+    -webkit-app-region: drag; /* Electron: arrastrar la ventana desde la barra */
   }
   .brand {
     display: flex;
@@ -81,6 +76,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    -webkit-app-region: no-drag; /* Electron: los botones sí son clicables */
   }
   .light {
     width: 13px;
