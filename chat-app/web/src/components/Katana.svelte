@@ -32,24 +32,19 @@
   <ellipse cx="86" cy="26" rx="1.4" ry="6" fill="#3a2d22" />
   <rect x="90" y="22" width="7" height="8.5" rx="1.5" fill="#9a9488" />
 
-  <!-- Hoja: lomo (mune) que sube hacia la punta, filo curvo abajo y kissaki fino. -->
+  <!-- Hoja: lomo (mune) RECTO (línea recta desde la guarda a la punta) y filo
+       curvo abajo que sube hasta el kissaki. -->
   <path
-    d="M97 21.6 C175 17.2 275 14.4 344 13.4 L356 16.1 C320 18.6 200 24.6 97 29.4 Z"
+    d="M97 20.6 L356 15.1 C315 18 200 23.4 97 29.2 Z"
     fill="#c7c0b3"
   />
   <!-- Yokote: línea corta que delimita la punta (kissaki). -->
-  <path d="M344 13.7 L347 17.9" stroke="#8f887b" stroke-width="0.7" opacity="0.55" fill="none" />
-  <!-- Shinogi: cresta junto al lomo. -->
-  <path
-    d="M100 22.9 C180 18.9 275 16.1 344 14.5"
-    stroke="#efe9dc"
-    stroke-width="0.5"
-    opacity="0.4"
-    fill="none"
-  />
+  <path d="M344 15.4 L345.6 17.4" stroke="#8f887b" stroke-width="0.7" opacity="0.55" fill="none" />
+  <!-- Shinogi: cresta recta junto al lomo. -->
+  <path d="M100 21.8 L350 16.2" stroke="#efe9dc" stroke-width="0.5" opacity="0.4" fill="none" />
   <!-- Hamon: línea de temple junto al filo. -->
   <path
-    d="M103 27.4 C190 22.4 290 18.6 348 15.7"
+    d="M103 27.2 C200 22.6 300 18.4 349 15.6"
     stroke="#efe9dc"
     stroke-width="0.8"
     opacity="0.45"
