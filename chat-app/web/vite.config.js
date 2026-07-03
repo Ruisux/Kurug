@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
 // El backend FastAPI corre en :8000. En desarrollo proxyeamos las rutas de la
@@ -20,14 +20,25 @@ const https =
     ? { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) }
     : undefined;
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // Hosts extra permitidos (IP de LAN, hostname .local…) son ESPECÍFICOS de cada
+  // máquina, así que no se hornean aquí: se leen de `KURUG_ALLOWED_HOSTS` (lista
+  // separada por comas) en un `.env.local` que git ignora. Ejemplo:
+  //   KURUG_ALLOWED_HOSTS=192.168.1.22,macbook-pro-rui.local
+  const env = loadEnv(mode, dir, "KURUG_");
+  const extraHosts = (env.KURUG_ALLOWED_HOSTS || "")
+    .split(",")
+    .map((h) => h.trim())
+    .filter(Boolean);
+
+  return {
   plugins: [svelte()],
   server: {
     host: true, // escucha en 0.0.0.0 para que otros equipos de la LAN entren
     port: 5173,
     https,
-    // Permite acceder por IP de LAN y por el hostname .local sin bloqueos.
-    allowedHosts: ["localhost", "192.168.1.18", "macbook-pro-rui.local"],
+    // localhost siempre; el resto (IP LAN / .local) desde KURUG_ALLOWED_HOSTS.
+    allowedHosts: ["localhost", ...extraHosts],
     proxy: {
       "/auth": target,
       "/users": target,
@@ -45,4 +56,5 @@ export default defineConfig({
       "/twirp": "http://localhost:7880",
     },
   },
+  };
 });
