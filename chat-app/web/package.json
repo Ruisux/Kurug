@@ -2,23 +2,20 @@
   "name": "kurug-web",
   "private": true,
   "version": "0.1.1",
+  "description": "Kurug — chat, voz y compartir pantalla auto-hospedado.",
+  "author": "Ruisux",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "desktop": "tauri dev",
-    "desktop:build": "tauri build",
     "electron": "electron .",
     "electron:dev": "vite build && electron .",
     "electron:build": "vite build && electron-builder"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
-    "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/cli": "^2.11.3",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "svelte": "^5.20.0",
@@ -26,10 +23,6 @@
   },
   "dependencies": {
     "@livekit/krisp-noise-filter": "^0.4.3",
-    "@tauri-apps/plugin-global-shortcut": "^2.3.2",
-    "@tauri-apps/plugin-notification": "^2.3.3",
-    "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-updater": "^2.10.1",
     "electron-updater": "^6.3.9",
     "livekit-client": "^2.19.2"
   }

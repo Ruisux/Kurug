@@ -1,6 +1,6 @@
 name: Publicar Kurug (escritorio)
 
-# Se dispara al subir una etiqueta de versión, p. ej.:  git tag v0.1.1 && git push --tags
+# Se dispara al subir una etiqueta de versión, p. ej.:  git tag v0.2.0 && git push --tags
 on:
   push:
     tags:
@@ -14,12 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest      # universal (Intel + Apple Silicon)
-            args: "--target universal-apple-darwin"
-          - platform: ubuntu-22.04
-            args: ""
           - platform: windows-latest
-            args: ""
+          - platform: macos-latest
+          - platform: ubuntu-22.04
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -30,36 +27,15 @@ jobs:
         with:
           node-version: 20
 
-      - name: Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - name: Dependencias de Linux (WebKitGTK)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Instalar npm
+      - name: Instalar dependencias
         working-directory: chat-app/web
         run: npm ci
 
-      - name: Compilar, firmar y publicar
-        uses: tauri-apps/tauri-action@v0
+      - name: Compilar y publicar (electron-builder)
+        working-directory: chat-app/web
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # URL de tu servidor (variable del repo KURUG_SERVER), se hornea en el
-          # binario para que la app sepa con qué servidor hablar. Si la variable
-          # no está definida, usa el dominio DuckDNS por defecto.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # URL del servidor (variable del repo KURUG_SERVER), se hornea en la SPA
+          # para que la app sepa con qué servidor hablar. Sin proxy en escritorio.
           VITE_KURUG_SERVER: ${{ vars.KURUG_SERVER || 'https://kurug.duckdns.org' }}
-        with:
-          projectPath: chat-app/web
-          tagName: ${{ github.ref_name }}
-          releaseName: "Kurug ${{ github.ref_name }}"
-          releaseBody: "Descarga el instalador para tu sistema. La app se auto-actualiza."
-          releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
+        run: npm run electron:build -- --publish always

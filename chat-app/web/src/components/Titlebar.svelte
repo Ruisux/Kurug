@@ -1,15 +1,15 @@
 <script>
-  // Barra de título personalizada para la app de ESCRITORIO (Tauri).
+  // Barra de título personalizada para la app de ESCRITORIO (Electron).
   //
-  // La ventana se crea sin decoración nativa (`decorations: false` en
-  // tauri.conf.json); esta barra la sustituye: zona arrastrable + botones de
-  // ventana propios. En el navegador NO se renderiza (no hay ventana que mover).
+  // La ventana se crea sin marco nativo (frame: false); esta barra la sustituye:
+  // zona arrastrable + botones de ventana propios. En el navegador NO se
+  // renderiza (no hay ventana que mover).
   //
   // Diseño: logo 刃 + "Kurug" a la izquierda; a la derecha, tres "semáforos"
   // estilo macOS (cerrar rojo, minimizar amarillo, maximizar verde).
   import { isDesktop, windowControls } from "../lib/desktop.js";
 
-  // Se muestra en la app de escritorio (Electron o Tauri), no en el navegador.
+  // Se muestra solo en la app de escritorio (Electron), no en el navegador.
   const showBar = isDesktop;
 
   const minimize = () => windowControls.minimize();
@@ -18,10 +18,9 @@
 </script>
 
 {#if showBar}
-  <!-- data-tauri-drag-region: arrastrar aquí mueve la ventana (Tauri). En
-       Electron el arrastre se hace con CSS (-webkit-app-region: drag). -->
-  <div class="titlebar" data-tauri-drag-region>
-    <div class="brand" data-tauri-drag-region>
+  <!-- Arrastrar la barra mueve la ventana (CSS -webkit-app-region: drag). -->
+  <div class="titlebar">
+    <div class="brand">
       <span class="mark serif">刃</span>
       <span class="name display">Kurug</span>
     </div>

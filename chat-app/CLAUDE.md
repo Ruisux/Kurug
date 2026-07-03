@@ -150,7 +150,14 @@ La voz/pantalla NO usa WS propio: va por LiveKit (ver arriba).
 
 - Frontend nuevo = **Svelte** (bundles pequeños, encaja con la prioridad de
   ligereza). El `static/index.html` actual es solo el cliente de prueba.
-- Escritorio = **Tauri** (webview del sistema, binarios de pocos MB), NO Electron.
+- Escritorio = **Electron** (`web/electron/`, empaquetado con electron-builder).
+  Se migró desde Tauri porque WebView2 no permitía quitar la barra de "estás
+  compartiendo" ni capturar audio del sistema al compartir. Electron sí:
+  `setDisplayMediaRequestHandler` + `desktopCapturer` (selector propio, sin la
+  barra) y audio `loopback` (Windows). Auto-update con `electron-updater`
+  (GitHub Releases, SIN firmar: SmartScreen avisa "editor desconocido"). La capa
+  `src/lib/desktop.js` abstrae ventana/atajos/updater/pantalla; el proceso
+  principal está en `web/electron/main.cjs` (esquema seguro `app://`).
 - Avatares en el **filesystem** del server (`static/avatars/`), no object storage.
 - **Tipografía:** cuerpo/UI = **Poppins** (`.display` no); títulos/branding latinos =
   **Sora** (clase `.display`; `.display.title` = Bold 700, resto SemiBold 600);

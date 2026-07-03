@@ -3,7 +3,6 @@ productName: Kurug
 
 directories:
   output: release
-  buildResources: build
 
 # Qué se empaqueta (los node_modules de producción se incluyen solos).
 files:
@@ -19,7 +18,7 @@ publish:
 
 win:
   target: nsis
-  icon: src-tauri/icons/icon.ico
+  icon: electron/icons/icon.ico
 nsis:
   oneClick: false
   perMachine: false
@@ -27,12 +26,12 @@ nsis:
 
 mac:
   target: dmg
-  icon: src-tauri/icons/icon.icns
+  icon: electron/icons/icon.icns
   category: public.app-category.social-networking
 
 linux:
   target:
     - AppImage
     - deb
-  icon: src-tauri/icons/128x128.png
+  icon: electron/icons/icon.png
   category: Network
