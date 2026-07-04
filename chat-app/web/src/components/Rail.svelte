@@ -7,6 +7,7 @@
   export let onHome = () => {};
   export let onMusic = () => {};
   export let onAudio = () => {};
+  export let onAppearance = () => {};
   export let homeActive = false;
   export let musicActive = false;
 </script>
@@ -23,6 +24,9 @@
 
   <button class="navbtn small" on:click={onAudio} title="Ajustes de audio" aria-label="Ajustes de audio">
     <i class="ti ti-settings"></i>
+  </button>
+  <button class="navbtn small" on:click={onAppearance} title="Apariencia" aria-label="Apariencia">
+    <i class="ti ti-palette"></i>
   </button>
   <ThemeToggle />
   <button class="me" on:click={onProfile} title="Tu perfil" aria-label="Tu perfil">

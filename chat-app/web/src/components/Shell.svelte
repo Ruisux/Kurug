@@ -17,6 +17,7 @@
   import PresencePanel from "./PresencePanel.svelte";
   import ProfileModal from "./ProfileModal.svelte";
   import AudioSettings from "./AudioSettings.svelte";
+  import AppearanceModal from "./AppearanceModal.svelte";
   import VoiceAudio from "./VoiceAudio.svelte";
   import MiniBar from "./MiniBar.svelte";
   import UpdateBanner from "./UpdateBanner.svelte";
@@ -31,6 +32,7 @@
   let messages = [];
   let showProfile = false;
   let showAudio = false;
+  let showAppearance = false;
 
   let chatWs = null;
   let presWs = null;
@@ -407,6 +409,7 @@
       musicActive={isMusicChannel}
       onProfile={() => (showProfile = true)}
       onAudio={() => (showAudio = true)}
+      onAppearance={() => (showAppearance = true)}
       onHome={() => { const c = channels.find((x) => x.kind !== "voice" && !x.is_music) || channels.find((x) => x.kind !== "voice") || channels[0]; if (c) openChannel(c.id); }}
       onMusic={() => $musicChannelId != null && openChannel($musicChannelId)}
     />
@@ -444,6 +447,10 @@
 
 {#if showAudio}
   <AudioSettings onClose={() => (showAudio = false)} />
+{/if}
+
+{#if showAppearance}
+  <AppearanceModal onClose={() => (showAppearance = false)} onSaved={syncProfileLive} />
 {/if}
 
 <!-- Aviso de actualización (solo escritorio). -->

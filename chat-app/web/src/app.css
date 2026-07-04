@@ -51,6 +51,31 @@
   --shadow: rgba(80, 60, 30, 0.18);
 }
 
+/* Negro puro (AMOLED): ahorra batería en OLED y da un contraste dramático,
+   manteniendo el acento cálido y los hairlines de latón del sumi-e. */
+:root[data-theme="amoled"] {
+  --ink: #000000;
+  --pan: #0a0807;
+  --rail: #000000;
+  --hover: #16110d;
+  --bd: rgba(194, 163, 91, 0.13);
+  --bd2: rgba(194, 163, 91, 0.26);
+  --tx: #ece5db;
+  --mut: #948a7f;
+  --fnt: #6a6159;
+  --shu: #e2553b;
+  --shu-rgb: 226, 85, 59;
+  --shu-deep: #c0432c;
+  --gold: #c2a35b;
+  --on: #6fbf8e;
+  --away: #e0a53c;
+  --dnd: #e2553b;
+  --off: #6a6159;
+  --field: #0f0b09;
+  --art-bg: var(--ink);
+  --shadow: rgba(0, 0, 0, 0.6);
+}
+
 * {
   box-sizing: border-box;
 }
