@@ -1,6 +1,8 @@
 <script>
   import Avatar from "./Avatar.svelte";
-  import { voiceState } from "../lib/voice.js";
+  import {
+    voiceState, toggleMute, toggleDeafen, toggleShare, toggleCamera, leaveVoice,
+  } from "../lib/voice.js";
   import { jpLabels, channelKanji } from "../lib/appearance.js";
 
   export let channels = [];
@@ -85,6 +87,9 @@
 
   // Peers en la voz actual (para el punto de "en directo" en el canal activo).
   $: activeVoiceId = $voiceState.active ? $voiceState.channelId : null;
+  // Nombre del canal de voz conectado (para la barra de voz fija).
+  $: activeVoiceName = activeVoiceId != null
+    ? (channels.find((c) => c.id === activeVoiceId)?.name ?? "voz") : "";
 </script>
 
 <aside class="col">
@@ -201,6 +206,39 @@
           <span class="dmname">{d.user.display_name}</span>
         </button>
       {/each}
+    {/if}
+
+  </div>
+
+  <div class="footer">
+    <!-- Barra de voz fija: qué canal + controles, siempre visible. -->
+    {#if $voiceState.active}
+      <div class="vbar">
+        <button class="vlink" on:click={() => onSelectVoice($voiceState.channelId)} title="Abrir la sala de voz">
+          <span class="vsig" class:sp={$voiceState.meSpeaking && !$voiceState.muted}><i class="ti ti-volume"></i></span>
+          <span class="vtxt">
+            <span class="vst">Voz conectada</span>
+            <span class="vcn">{activeVoiceName}</span>
+          </span>
+        </button>
+        <div class="vbtns">
+          <button class="vb" class:on={$voiceState.muted} on:click={toggleMute} title="Silenciar" aria-label="Silenciar">
+            <i class="ti {$voiceState.muted ? 'ti-microphone-off' : 'ti-microphone'}"></i>
+          </button>
+          <button class="vb" class:on={$voiceState.deafened} on:click={toggleDeafen} title="Ensordecer" aria-label="Ensordecer">
+            <i class="ti {$voiceState.deafened ? 'ti-headphones-off' : 'ti-headphones'}"></i>
+          </button>
+          <button class="vb" class:act={$voiceState.cameraOn} on:click={toggleCamera} title="Cámara" aria-label="Cámara">
+            <i class="ti {$voiceState.cameraOn ? 'ti-video' : 'ti-video-off'}"></i>
+          </button>
+          <button class="vb" class:act={$voiceState.sharing} on:click={toggleShare} title="Compartir pantalla" aria-label="Compartir pantalla">
+            <i class="ti ti-screen-share"></i>
+          </button>
+          <button class="vb leave" on:click={leaveVoice} title="Salir de la voz" aria-label="Salir de la voz">
+            <i class="ti ti-phone-off"></i>
+          </button>
+        </div>
+      </div>
     {/if}
 
     <div class="new">
@@ -513,9 +551,85 @@
     color: var(--fnt);
     padding: 0 9px;
   }
+  .footer {
+    position: relative;
+    z-index: 1;
+    padding: 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  /* Barra de voz fija (estilo Discord, con nuestro toque). */
+  .vbar {
+    background: var(--field);
+    border: 1px solid var(--bd2);
+    border-radius: 14px;
+    padding: 9px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .vlink {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    color: inherit;
+  }
+  .vsig {
+    width: 30px;
+    height: 30px;
+    flex: none;
+    border-radius: 9px;
+    background: rgba(107, 191, 89, 0.16);
+    color: var(--on, #6bbf59);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .vsig.sp {
+    box-shadow: 0 0 0 2px rgba(107, 191, 89, 0.4);
+  }
+  .vtxt { display: flex; flex-direction: column; min-width: 0; }
+  .vst { font-size: 11px; color: var(--on, #6bbf59); font-weight: 600; }
+  .vcn {
+    font-size: 13px;
+    color: var(--tx);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .vlink:hover .vcn { color: var(--shu); }
+  .vbtns { display: flex; gap: 6px; }
+  .vb {
+    flex: 1;
+    height: 34px;
+    border-radius: 9px;
+    border: 1px solid var(--bd2);
+    background: var(--pan);
+    color: var(--mut);
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .vb:hover { color: var(--tx); border-color: var(--shu); }
+  .vb.on { background: rgba(var(--shu-rgb), 0.16); color: var(--shu); border-color: var(--shu); }
+  .vb.act { background: rgba(107, 191, 89, 0.16); color: var(--on, #6bbf59); border-color: var(--on, #6bbf59); }
+  .vb.leave {
+    flex: 0 0 auto;
+    width: 40px;
+    background: var(--shu);
+    color: #160d0a;
+    border-color: var(--shu);
+  }
+  .vb.leave:hover { background: var(--shu-deep); color: #160d0a; }
   .new {
-    margin-top: auto;
-    padding-top: 10px;
+    padding-top: 0;
     display: flex;
     flex-direction: column;
     gap: 7px;
