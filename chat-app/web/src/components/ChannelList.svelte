@@ -217,7 +217,7 @@
 
 <style>
   .col {
-    width: 196px;
+    width: 244px;
     background: var(--pan);
     border-right: 1px solid var(--bd);
     display: flex;
@@ -232,16 +232,16 @@
     }
   }
   header {
-    padding: 15px 14px 12px;
+    padding: 19px 18px 15px;
     border-bottom: 1px solid var(--bd);
   }
   .name {
-    font-size: 18px;
+    font-size: 21px;
     font-weight: 600;
     letter-spacing: 0.02em;
   }
   .body {
-    padding: 8px;
+    padding: 10px;
     flex: 1;
     overflow-y: auto;
     display: flex;
@@ -283,10 +283,10 @@
     text-align: left;
     background: none;
     border: none;
-    padding: 7px 9px;
-    border-radius: 8px;
+    padding: 9px 11px;
+    border-radius: 9px;
     color: var(--mut);
-    font-size: 13.5px;
+    font-size: 14.5px;
   }
   .ch:hover {
     color: var(--tx);
