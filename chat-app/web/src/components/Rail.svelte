@@ -13,6 +13,8 @@
 </script>
 
 <nav class="rail">
+  <div class="seal serif" aria-hidden="true">東</div>
+  <div class="rdiv"></div>
   <button class="navbtn" class:active={homeActive} on:click={onHome} title="Inicio" aria-label="Inicio">
     <i class="ti ti-home"></i>
   </button>
@@ -42,19 +44,40 @@
 
 <style>
   .rail {
-    width: 58px;
+    width: 62px;
     background: var(--rail);
     border-right: 1px solid var(--bd);
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 12px 0;
-    gap: 10px;
+    padding: 12px 0 14px;
+    gap: 11px;
   }
-  .navbtn {
+  .seal {
     width: 42px;
     height: 42px;
-    border-radius: 13px;
+    flex: none;
+    border-radius: 14px;
+    background: var(--shu);
+    color: #160d0a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 23px;
+    line-height: 1;
+  }
+  .rdiv {
+    width: 26px;
+    height: 1px;
+    background: var(--bd2);
+    flex: none;
+    margin: 1px 0 2px;
+  }
+  .navbtn {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
     background: var(--pan);
     border: 1px solid var(--bd);
     color: var(--mut);
@@ -70,13 +93,23 @@
   }
   .navbtn.active {
     background: rgba(var(--shu-rgb), 0.14);
-    border-color: var(--bd2);
+    border-color: var(--shu);
     color: var(--shu);
   }
+  /* Trazo bermellón a la izquierda del activo (en vez del pill de Discord). */
+  .navbtn.active::before {
+    content: "";
+    position: absolute;
+    left: -11px;
+    top: 10px;
+    bottom: 10px;
+    width: 4px;
+    border-radius: 3px;
+    background: var(--shu);
+  }
   .navbtn.small {
-    width: 38px;
-    height: 38px;
-    border-radius: 11px;
+    width: 40px;
+    height: 40px;
     font-size: 17px;
   }
   .spacer {

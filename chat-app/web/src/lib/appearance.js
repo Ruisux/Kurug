@@ -24,3 +24,22 @@ export const ACCENTS = [
   { key: "kin", label: "金 oro", hex: "#c2a35b" },
   { key: "murasaki", label: "紫 púrpura", hex: "#9a6cc0" },
 ];
+
+// Lectura kanji para canales conocidos (solo se muestra si jpLabels está ON).
+// Para nombres sin correspondencia no se muestra nada: discreto y seguro.
+const CHANNEL_KANJI = {
+  general: "一般",
+  aportes: "寄稿",
+  "música": "音楽",
+  musica: "音楽",
+  principal: "主",
+  random: "雑談",
+  memes: "戯画",
+  ayuda: "助力",
+  bienvenida: "歓迎",
+  reglas: "規則",
+  anuncios: "告知",
+};
+export function channelKanji(name) {
+  return CHANNEL_KANJI[(name || "").trim().toLowerCase()] || "";
+}

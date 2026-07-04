@@ -5,6 +5,7 @@
   import EmojiPicker from "./EmojiPicker.svelte";
   import GifPicker from "./GifPicker.svelte";
   import { formatTime } from "../lib/ui.js";
+  import { jpLabels, channelKanji } from "../lib/appearance.js";
   import { me } from "../lib/stores.js";
   import { api } from "../lib/api.js";
   import { voiceState } from "../lib/voice.js";
@@ -400,6 +401,7 @@
       {:else}
         <span class="hash">#</span>
         <span class="display nm">{header.name}</span>
+        {#if $jpLabels && channelKanji(header.name)}<span class="hrd serif">{channelKanji(header.name)}</span>{/if}
       {/if}
     </div>
     <div class="hdr-actions">
@@ -842,6 +844,11 @@
   }
   .nm {
     font-size: 16px;
+  }
+  .hrd {
+    font-size: 12px;
+    color: var(--mut);
+    margin-left: 2px;
   }
   .messages {
     flex: 1;

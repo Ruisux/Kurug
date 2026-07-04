@@ -54,9 +54,9 @@
         on:click={() => onSelectUser(u)}
         on:contextmenu={(e) => openMenu(e, u)}
       >
-        <span class="av"><Avatar name={u.display_name} url={u.avatar_url} size={38} status={u.status} /></span>
+        <span class="av"><Avatar name={u.display_name} url={u.avatar_url} size={42} status={u.status} /></span>
         <span class="info">
-          <span class="nm">{u.display_name}{#if u.is_admin}<i class="ti ti-shield-check adm" title="Admin"></i>{/if}</span>
+          <span class="nm">{u.display_name}{#if u.is_admin}<span class="hanko serif" title="Admin">主</span>{/if}</span>
           {#if userVoice[u.id]}
             <span class="voice"><i class="ti ti-volume"></i>{userVoice[u.id]}</span>
           {:else}
@@ -79,15 +79,26 @@
           on:click={() => onSelectUser(u)}
           on:contextmenu={(e) => openMenu(e, u)}
         >
-          <span class="av"><Avatar name={u.display_name} url={u.avatar_url} size={38} /></span>
+          <span class="av"><Avatar name={u.display_name} url={u.avatar_url} size={42} /></span>
           <span class="info">
-            <span class="nm">{u.display_name}{#if u.is_admin}<i class="ti ti-shield-check adm" title="Admin"></i>{/if}</span>
+            <span class="nm">{u.display_name}{#if u.is_admin}<span class="hanko serif" title="Admin">主</span>{/if}</span>
             <span class="cs">Desconectado</span>
           </span>
         </button>
       {/each}
     {/if}
   </div>
+
+  <!-- Ambientación sumi-e: rama de sakura al pie. -->
+  <svg class="amb" viewBox="0 0 180 130" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+    <path d="M14 130 C60 104 100 86 158 34" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" />
+    <path d="M96 66 C110 55 124 58 130 44" stroke="currentColor" stroke-width="2.2" fill="none" />
+    <path d="M64 92 C74 84 86 86 92 74" stroke="currentColor" stroke-width="2.2" fill="none" />
+    <g fill="currentColor">
+      <circle cx="158" cy="34" r="6" /><circle cx="146" cy="46" r="5" /><circle cx="130" cy="44" r="5" />
+      <circle cx="120" cy="30" r="4.5" /><circle cx="140" cy="28" r="4" /><circle cx="92" cy="74" r="5" /><circle cx="80" cy="82" r="4.5" />
+    </g>
+  </svg>
 </aside>
 
 {#if menu}
@@ -96,19 +107,23 @@
 
 <style>
   .col {
-    width: 232px;
+    width: 248px;
     background: var(--pan);
     border-left: 1px solid var(--bd);
     display: flex;
     flex-direction: column;
+    position: relative;
+    overflow: hidden;
   }
   header {
-    padding: 15px 14px 12px;
+    padding: 18px 16px 14px;
     border-bottom: 1px solid var(--bd);
-    font-size: 13px;
+    font-size: 13.5px;
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 8px;
+    position: relative;
+    z-index: 1;
   }
   header i {
     color: var(--shu);
@@ -120,12 +135,39 @@
     font-variant-numeric: tabular-nums;
   }
   .body {
-    padding: 8px 8px 12px;
+    padding: 10px 10px 12px;
     flex: 1;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
+    position: relative;
+    z-index: 1;
+  }
+  .amb {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -6px;
+    height: 150px;
+    color: var(--tx);
+    opacity: 0.07;
+    pointer-events: none;
+    z-index: 0;
+  }
+  :global(:root[data-theme="light"]) .amb { opacity: 0.13; }
+  .hanko {
+    font-size: 10px;
+    width: 18px;
+    height: 18px;
+    flex: none;
+    border-radius: 4px;
+    border: 1.5px solid #c0392b;
+    color: #c0392b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
   }
   .lbl {
     font-size: 11px;
@@ -141,9 +183,9 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 11px;
-    padding: 9px 11px 9px 13px;
-    border-radius: 12px;
+    gap: 12px;
+    padding: 11px 12px 11px 15px;
+    border-radius: 14px;
     width: 100%;
     text-align: left;
     background: var(--ink);

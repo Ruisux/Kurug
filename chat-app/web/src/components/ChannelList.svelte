@@ -1,6 +1,7 @@
 <script>
   import Avatar from "./Avatar.svelte";
   import { voiceState } from "../lib/voice.js";
+  import { jpLabels, channelKanji } from "../lib/appearance.js";
 
   export let channels = [];
   export let dms = [];
@@ -86,11 +87,19 @@
 </script>
 
 <aside class="col">
-  <header><div class="display title name">Kurug</div></header>
+  <header>
+    <div class="brand">
+      <span class="seal serif">刃</span>
+      <div>
+        <div class="display title name">Kurug</div>
+        <div class="sub serif">クルグ</div>
+      </div>
+    </div>
+  </header>
 
   <div class="body">
     <!-- Canales de texto -->
-    <div class="lbl">Texto</div>
+    <div class="lbl">Texto{#if $jpLabels}<span class="lk">テキスト</span>{/if}</div>
     {#each textChannels as c (c.id)}
       <div
         class="row"
@@ -107,6 +116,10 @@
       >
         <button class="ch" class:unread={unread[c.id] > 0} on:click={() => onSelectChannel(c.id)}>
           <span class="hash">{c.is_music ? "♪" : "#"}</span>{c.name}
+          {#if $jpLabels && channelKanji(c.name)}<span class="rd">{channelKanji(c.name)}</span>{/if}
+          {#if c.id === currentChannelId}
+            <svg class="brush" viewBox="0 0 120 10" preserveAspectRatio="none" aria-hidden="true"><path d="M3 5 C25 2 45 7 65 4 S100 6 117 4 L117 7 C95 9 55 5 33 7 S8 6 3 7 Z" fill="currentColor"/></svg>
+          {/if}
         </button>
         {#if unread[c.id] > 0}
           <span class="badge">{unread[c.id] > 99 ? "99+" : unread[c.id]}</span>
@@ -122,8 +135,11 @@
       <p class="empty">Crea el primer canal abajo.</p>
     {/if}
 
+    <!-- Separador de tinta entre secciones -->
+    <div class="ink"><svg viewBox="0 0 200 6" preserveAspectRatio="none" aria-hidden="true"><path d="M2 3 C40 1 70 5 110 3 S180 4 198 2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></div>
+
     <!-- Canales de voz -->
-    <div class="lbl">Voz</div>
+    <div class="lbl">Voz{#if $jpLabels}<span class="lk">ボイス</span>{/if}</div>
     {#each voiceChannels as c (c.id)}
       <div class="vwrap">
         <div
@@ -141,10 +157,14 @@
         >
           <button class="ch" on:click={() => onSelectVoice(c.id)}>
             <span class="hash"><i class="ti ti-volume"></i></span>{c.name}
+            {#if $jpLabels && channelKanji(c.name)}<span class="rd">{channelKanji(c.name)}</span>{/if}
             {#if (voiceMembers[c.id] || []).length}
               <span class="count">{(voiceMembers[c.id] || []).length}</span>
             {/if}
             {#if c.id === activeVoiceId}<span class="livedot" title="Estás aquí"></span>{/if}
+            {#if c.id === activeVoiceId}
+              <svg class="brush" viewBox="0 0 120 10" preserveAspectRatio="none" aria-hidden="true"><path d="M3 5 C25 2 45 7 65 4 S100 6 117 4 L117 7 C95 9 55 5 33 7 S8 6 3 7 Z" fill="currentColor"/></svg>
+            {/if}
           </button>
           {#if isAdmin}
             <button class="x" title="Borrar canal" aria-label="Borrar canal" on:click={(e) => confirmDelete(c, e)}>
@@ -203,6 +223,13 @@
       </div>
     </div>
   </div>
+
+  <!-- Ambientación sumi-e: torii + sol naciente al pie de la columna. -->
+  <svg class="amb" viewBox="0 0 200 130" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+    <circle cx="100" cy="92" r="36" fill="currentColor" />
+    <path d="M40 78 H160 M46 87 H154 M60 87 V130 M140 87 V130" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" />
+    <path d="M52 78 Q100 65 148 78" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" />
+  </svg>
 </aside>
 
 {#if menu}
@@ -217,11 +244,13 @@
 
 <style>
   .col {
-    width: 244px;
+    width: 256px;
     background: var(--pan);
     border-right: 1px solid var(--bd);
     display: flex;
     flex-direction: column;
+    position: relative;
+    overflow: hidden;
   }
   @media (max-width: 640px) {
     /* En móvil la lista llena el ancho disponible junto al rail. */
@@ -232,20 +261,49 @@
     }
   }
   header {
-    padding: 19px 18px 15px;
+    padding: 18px 18px 15px;
     border-bottom: 1px solid var(--bd);
+    position: relative;
+    z-index: 1;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+  .seal {
+    width: 38px;
+    height: 38px;
+    flex: none;
+    border-radius: 12px;
+    background: var(--shu);
+    color: #160d0a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 21px;
+    line-height: 1;
   }
   .name {
     font-size: 21px;
     font-weight: 600;
     letter-spacing: 0.02em;
+    line-height: 1.1;
+  }
+  .sub {
+    font-size: 11.5px;
+    color: var(--mut);
+    letter-spacing: 0.08em;
+    margin-top: 1px;
   }
   .body {
-    padding: 10px;
+    padding: 12px;
     flex: 1;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    position: relative;
+    z-index: 1;
   }
   .lbl {
     font-size: 11px;
@@ -254,19 +312,63 @@
     text-transform: uppercase;
     color: var(--mut);
     padding: 0 8px;
-    margin: 14px 0 6px;
+    margin: 16px 0 7px;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
   }
+  .lbl .lk {
+    font-size: 10px;
+    letter-spacing: 0;
+    color: var(--fnt);
+    text-transform: none;
+  }
+  .ink {
+    color: var(--bd2);
+    padding: 4px 10px 2px;
+    height: 10px;
+  }
+  .ink svg {
+    width: 100%;
+    height: 6px;
+    display: block;
+  }
+  .amb {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -6px;
+    height: 150px;
+    color: var(--tx);
+    opacity: 0.08;
+    pointer-events: none;
+    z-index: 0;
+  }
+  :global(:root[data-theme="light"]) .amb { opacity: 0.13; }
   .row {
     display: flex;
     align-items: center;
-    border-radius: 8px;
+    border-radius: 11px;
   }
-  .row.on,
-  .ch.on {
-    background: rgba(var(--shu-rgb), 0.13);
+  .row.on {
+    background: rgba(var(--shu-rgb), 0.09);
   }
   .row:hover {
     background: var(--hover);
+  }
+  .rd {
+    font-size: 11px;
+    color: var(--fnt);
+    margin-left: 6px;
+  }
+  .brush {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 3px;
+    height: 6px;
+    color: var(--shu);
+    pointer-events: none;
   }
   .row.dragging {
     opacity: 0.4;
@@ -275,16 +377,17 @@
     box-shadow: inset 0 2px 0 var(--shu);
   }
   .ch {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 8px;
     flex: 1;
     min-width: 0;
     text-align: left;
     background: none;
     border: none;
-    padding: 9px 11px;
-    border-radius: 9px;
+    padding: 11px 12px;
+    border-radius: 11px;
     color: var(--mut);
     font-size: 14.5px;
   }
