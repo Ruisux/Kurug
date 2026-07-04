@@ -36,6 +36,7 @@ export const voiceState = writable({
   muted: false,
   deafened: false,
   sharing: false,
+  cameraOn: false, // mi cámara encendida
   meSpeaking: false, // ilumina mi propio chip cuando hablo
   quality: get(prefs).screenQuality, // clave de SCREEN_PRESETS
   peers: {}, // identity -> { id, name, avatar, stream, hasVideo, volume, localMuted, speaking }
@@ -71,10 +72,16 @@ function publish() {
       id: p.id,
       name: p.info.display_name,
       avatar: p.info.avatar_url,
-      stream: p.video || null,
-      hasVideo: !!p.video,
+      camera: p.camera || null,
+      screen: p.screen || null,
+      hasCamera: !!p.camera,
+      hasScreen: !!p.screen,
+      // Compat con la barra de voz antigua (usa stream/hasVideo = pantalla).
+      stream: p.screen || null,
+      hasVideo: !!p.screen,
       volume: p.volume,
       localMuted: p.localMuted,
+      micMuted: !!p.micMuted,
       speaking: !!p.speaking,
     };
   }
@@ -91,9 +98,11 @@ function peerFor(participant) {
         display_name: participant.name || meta.display_name || "…",
         avatar_url: meta.avatar_url || null,
       },
-      video: null,
+      camera: null, // MediaStream de su cámara
+      screen: null, // MediaStream de su pantalla compartida
       audioTrack: null,
       audioEl: null,
+      micMuted: false, // si tiene el micro silenciado
       // El bot de música usa el volumen local guardado; las personas, 100%.
       volume: meta.bot ? get(prefs).botVolume : 100,
       localMuted: false,
@@ -122,8 +131,14 @@ function onSubscribed(track, _pub, participant) {
     ensureAudioBin().appendChild(p.audioEl);
     applyVol(p);
   } else if (track.kind === Track.Kind.Video) {
-    p.video = new MediaStream([track.mediaStreamTrack]);
-    playSound("shareStart"); // alguien empezó a compartir su pantalla
+    const isScreen = (_pub?.source || track.source) === Track.Source.ScreenShare;
+    const stream = new MediaStream([track.mediaStreamTrack]);
+    if (isScreen) {
+      p.screen = stream;
+      playSound("shareStart"); // alguien empezó a compartir su pantalla
+    } else {
+      p.camera = stream; // encendió su cámara
+    }
     publish();
   }
 }
@@ -136,8 +151,13 @@ function onUnsubscribed(track, _pub, participant) {
     p.audioTrack = null;
     p.audioEl = null;
   } else if (track.kind === Track.Kind.Video) {
-    p.video = null;
-    playSound("shareStop"); // alguien dejó de compartir
+    const isScreen = (_pub?.source || track.source) === Track.Source.ScreenShare;
+    if (isScreen) {
+      p.screen = null;
+      playSound("shareStop"); // alguien dejó de compartir
+    } else {
+      p.camera = null;
+    }
     publish();
   }
 }
@@ -193,6 +213,14 @@ export async function joinVoice(channelId) {
       p.hidden = !!meta.bot;
       publish();
     })
+    .on(RoomEvent.TrackMuted, (pub, pt) => {
+      const p = peers[pt.identity];
+      if (p && pub.kind === Track.Kind.Audio) { p.micMuted = true; publish(); }
+    })
+    .on(RoomEvent.TrackUnmuted, (pub, pt) => {
+      const p = peers[pt.identity];
+      if (p && pub.kind === Track.Kind.Audio) { p.micMuted = false; publish(); }
+    })
     .on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
       // LiveKit avisa quién habla (voz por encima del umbral). Iluminamos su
       // avatar en la barra de voz para saber de dónde vienen los sonidos.
@@ -234,6 +262,7 @@ export async function joinVoice(channelId) {
     muted: !micOk,
     deafened: false,
     sharing: false,
+    cameraOn: false,
     meSpeaking: false,
     peers: {},
     error: micOk ? null : "Sin micrófono: estás solo escuchando.",
@@ -265,6 +294,7 @@ export async function leaveVoice() {
     muted: false,
     deafened: false,
     sharing: false,
+    cameraOn: false,
     meSpeaking: false,
     quality: get(voiceState).quality,
     peers: {},
@@ -410,6 +440,29 @@ export async function setQuality(q) {
 export function localShareStream() {
   if (!room) return null;
   const pub = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
+  const t = pub?.track;
+  return t ? new MediaStream([t.mediaStreamTrack]) : null;
+}
+
+// --- Cámara ---
+export async function toggleCamera() {
+  if (!room) return;
+  const on = room.localParticipant.isCameraEnabled;
+  try {
+    await room.localParticipant.setCameraEnabled(!on, {
+      deviceId: get(prefs).cameraDeviceId || undefined,
+    });
+    voiceState.update((s) => ({ ...s, cameraOn: !on }));
+    publish();
+  } catch (e) {
+    voiceState.update((s) => ({ ...s, error: "No se pudo acceder a la cámara." }));
+  }
+}
+
+// Stream local de la cámara, para verme a mí mismo.
+export function localCameraStream() {
+  if (!room) return null;
+  const pub = room.localParticipant.getTrackPublication(Track.Source.Camera);
   const t = pub?.track;
   return t ? new MediaStream([t.mediaStreamTrack]) : null;
 }

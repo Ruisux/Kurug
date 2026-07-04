@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { get } from "svelte/store";
-  import { voiceState, joinVoice, setBotVolume } from "../lib/voice.js";
+  import { voiceState, setBotVolume } from "../lib/voice.js";
   import { musicState, music } from "../lib/music.js";
   import { prefs } from "../lib/prefs.js";
   import VoicePanel from "./VoicePanel.svelte";
@@ -49,11 +49,7 @@
     <span class="mark"><i class="ti ti-disc"></i></span>
     <span class="display title">sala de música</span>
     <span class="count">{st.queue.length} en cola</span>
-    {#if !listening}
-      <button class="listen" on:click={() => voiceChannelId != null && joinVoice(voiceChannelId)} disabled={voiceChannelId == null}>
-        <i class="ti ti-headphones"></i> Unirse para escuchar
-      </button>
-    {/if}
+    <span class="hint">La música suena en tu canal de voz</span>
   </header>
 
   {#if listening}<VoicePanel />{/if}
@@ -165,21 +161,10 @@
     color: var(--mut);
     font-size: 12px;
   }
-  .listen {
+  .hint {
     margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12.5px;
-    color: var(--mut);
-    background: var(--pan);
-    border: 1px solid var(--bd2);
-    border-radius: 9px;
-    padding: 6px 11px;
-  }
-  .listen:hover {
-    color: var(--shu);
-    border-color: var(--shu);
+    font-size: 12px;
+    color: var(--fnt);
   }
   .scroll {
     flex: 1;

@@ -14,6 +14,7 @@
   import ChannelList from "./ChannelList.svelte";
   import ChatView from "./ChatView.svelte";
   import MusicRoom from "./MusicRoom.svelte";
+  import VoiceView from "./VoiceView.svelte";
   import PresencePanel from "./PresencePanel.svelte";
   import ProfileModal from "./ProfileModal.svelte";
   import AudioSettings from "./AudioSettings.svelte";
@@ -134,6 +135,8 @@
 
   $: currentChannelId = view.kind === "channel" ? view.id : null;
   $: currentDmUserId = view.kind === "dm" ? view.user.id : null;
+  $: voiceViewName = view.kind === "voice"
+    ? (channels.find((c) => c.id === view.id)?.name ?? "voz") : "voz";
   $: isMusicChannel =
     view.kind === "channel" && !!channels.find((c) => c.id === view.id)?.is_music;
   // La música suena en la VOZ de "general" (canal donde se conecta el bot).
@@ -363,9 +366,11 @@
     } catch {}
   }
 
-  // Seleccionar un canal de VOZ = unirse a su sala (no abre chat).
+  // Seleccionar un canal de VOZ = abrir su vista (recuadros + controles) y unirse.
   function selectVoice(id) {
-    joinVoice(id);
+    view = { kind: "voice", id };
+    if (window.innerWidth <= 640) mobilePane = "chat";
+    if (!($voiceState.active && $voiceState.channelId === id)) joinVoice(id);
   }
 
   // Reordena de forma optimista y persiste el nuevo orden en el server.
@@ -430,7 +435,9 @@
     />
   </div>
   <div class="main">
-    {#if isMusicChannel}
+    {#if view.kind === "voice"}
+      <VoiceView channelName={voiceViewName} onBack={backToList} />
+    {:else if isMusicChannel}
       <MusicRoom {voiceChannelId} onBack={backToList} />
     {:else}
       <ChatView {header} channelId={currentChannelId} dmUserId={currentDmUserId} {messages} {onSend} {onDelete} {onEdit} {onReact} {onPin} onBack={backToList} />
