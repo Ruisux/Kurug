@@ -31,6 +31,7 @@
 
   let newName = "";
   let newKind = "text"; // "text" | "voice"
+  let footerH = 0; // alto del pie (barra de voz + creador): el torii se pone encima
 
   // Separamos por tipo. El canal de música (is_music) cuenta como texto.
   $: textChannels = channels.filter((c) => c.kind !== "voice");
@@ -221,7 +222,7 @@
 
   </div>
 
-  <div class="footer">
+  <div class="footer" bind:clientHeight={footerH}>
     <!-- Barra de voz fija: qué canal + controles, siempre visible. -->
     {#if $voiceState.active}
       <div class="vbar">
@@ -276,14 +277,12 @@
     {/if}
   </div>
 
-  <!-- Ambientación sumi-e: torii + sol naciente al pie de la columna.
-       Simétrico alrededor de x=120: kasagi (viga curva), nuki (viga recta) y
-       dos pilares; el sol detrás. -->
-  <svg class="amb" viewBox="0 0 240 150" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
-    <circle cx="120" cy="86" r="40" fill="currentColor" />
-    <path d="M58 54 Q120 42 182 54" stroke="currentColor" stroke-width="7" fill="none" stroke-linecap="round" />
-    <path d="M84 74 H156" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round" />
-    <path d="M92 56 V150 M148 56 V150" stroke="currentColor" stroke-width="7" fill="none" stroke-linecap="round" />
+  <!-- Ambientación sumi-e: torii + sol naciente al pie de la columna
+       (mismo trazo limpio del mockup). -->
+  <svg class="amb" style="bottom: {footerH + 10}px" viewBox="0 0 200 120" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+    <circle cx="100" cy="86" r="34" fill="currentColor" />
+    <path d="M40 74 H160 M46 82 H154 M60 82 V120 M140 82 V120" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" />
+    <path d="M52 74 Q100 62 148 74" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" />
   </svg>
 </aside>
 
@@ -392,8 +391,7 @@
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 108px;
-    height: 190px;
+    height: 150px;
     color: var(--tx);
     opacity: 0.13;
     pointer-events: none;
