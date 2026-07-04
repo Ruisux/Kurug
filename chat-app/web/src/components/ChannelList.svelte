@@ -5,6 +5,7 @@
 
   export let channels = [];
   export let dms = [];
+  export let dmStatus = {}; // id -> estado en vivo (undefined = desconectado)
   export let currentChannelId = null;
   export let currentDmUserId = null;
   export let unread = {};
@@ -196,7 +197,7 @@
           class:on={d.user.id === currentDmUserId}
           on:click={() => onSelectDm(d.user)}
         >
-          <Avatar name={d.user.display_name} url={d.user.avatar_url} size={20} status={d.user.status} />
+          <Avatar name={d.user.display_name} url={d.user.avatar_url} size={20} status={dmStatus[d.user.id] || "offline"} />
           <span class="dmname">{d.user.display_name}</span>
         </button>
       {/each}

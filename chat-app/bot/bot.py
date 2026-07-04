@@ -142,6 +142,8 @@ class MusicBot:
         self.room: rtc.Room | None = None
         self.source: rtc.AudioSource | None = None
         self.loop = asyncio.get_event_loop()
+        # Protege el cambio de sala (self.room/self.source) frente al bucle de audio.
+        self.voice_lock = asyncio.Lock()
 
     # ---------- control (sala de música) ----------
     async def control(self):
@@ -166,6 +168,10 @@ class MusicBot:
                     vid = msg.get("video_id")
                     if vid:
                         asyncio.create_task(self._prefetch(vid))
+                elif t == "room":
+                    # El servidor indica en qué sala de voz debe sonar la música
+                    # (la de quien pidió la canción). Reconectar si cambió.
+                    await self._switch_room(msg.get("voice_cid"))
                 elif t == "seek":
                     pass  # (futuro) reabrir ffmpeg con -ss
 
@@ -213,25 +219,58 @@ class MusicBot:
                     pass
 
     # ---------- voz (LiveKit, solo publica) ----------
-    async def voice(self):
-        self.room = rtc.Room()
-        await self.room.connect(LIVEKIT_URL, livekit_token(self.room_name))
-        print(f"[bot] conectado a la voz (sala {self.room_name})")
-
+    async def _connect_voice(self, voice_cid: int):
+        """(Re)conecta a la sala de voz indicada y publica la pista de música."""
+        async with self.voice_lock:
+            self.source = None  # el bucle deja de capturar mientras cambiamos
+            old = self.room
+        if old is not None:
+            try:
+                await old.disconnect()
+            except Exception:
+                pass
+        room_name = f"channel-{voice_cid}"
+        room = rtc.Room()
+        await room.connect(LIVEKIT_URL, livekit_token(room_name))
         # Buffer corto (300 ms): menos latencia al pausar/saltar. Lo vaciamos
         # además con clear_queue() en pausa/stop/cambio para que sea instantáneo.
-        self.source = rtc.AudioSource(SAMPLE_RATE, CHANNELS, queue_size_ms=300)
-        track = rtc.LocalAudioTrack.create_audio_track("music", self.source)
+        source = rtc.AudioSource(SAMPLE_RATE, CHANNELS, queue_size_ms=300)
+        track = rtc.LocalAudioTrack.create_audio_track("music", source)
         opts = rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE)
-        await self.room.local_participant.publish_track(track, opts)
+        await room.local_participant.publish_track(track, opts)
+        async with self.voice_lock:
+            self.room = room
+            self.source = source
+            self.voice_cid = voice_cid
+            self.room_name = room_name
+        print(f"[bot] publicando en la voz (sala {room_name})")
+
+    async def _switch_room(self, voice_cid):
+        if not isinstance(voice_cid, int) or voice_cid == self.voice_cid:
+            return
+        try:
+            await self._connect_voice(voice_cid)
+        except Exception as e:
+            print(f"[bot] no pude cambiar a la sala {voice_cid}: {e}")
+
+    async def voice(self):
+        await self._connect_voice(self.voice_cid)
 
         # Bucle de audio: empuja un frame de 20 ms; AudioSource marca el ritmo.
+        # Durante un cambio de sala self.source es None: se descarta el frame.
         while True:
             data, ended = await self.loop.run_in_executor(None, self.pcm.read_frame)
             if ended:
                 self._on_ended()
+            async with self.voice_lock:
+                src = self.source
+            if src is None:
+                continue
             frame = rtc.AudioFrame(data, SAMPLE_RATE, CHANNELS, SAMPLES)
-            await self.source.capture_frame(frame)
+            try:
+                await src.capture_frame(frame)
+            except Exception:
+                pass
 
     async def run(self):
         await asyncio.gather(self.control(), self.voice(), self.progress_loop())

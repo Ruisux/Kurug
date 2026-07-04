@@ -17,6 +17,8 @@ from collections import defaultdict
 
 from fastapi import WebSocket
 
+from .presence import presence
+
 LOOPS = ("off", "one", "all")
 
 
@@ -30,6 +32,9 @@ class Room:
         self.position: float = 0.0
         # Canciones ya reproducidas (consumidas de la cola), para "anterior".
         self.history: list[dict] = []
+        # Canal de VOZ donde debe sonar (el del último que pidió una canción).
+        # None = aún sin destino; el bot no publica hasta que haya uno.
+        self.voice_cid: int | None = None
 
     def state(self) -> dict:
         return {
@@ -77,6 +82,11 @@ class MusicManager:
     # ---- comandos desde la UI ----
     async def add(self, channel_id: int, tracks: list[dict], user) -> None:
         room = self.rooms[channel_id]
+        # La música suena en el canal de VOZ de quien pide la canción. Si no está
+        # en ninguna voz, se mantiene el destino anterior (si lo hay).
+        target = presence.voice.get(user.id)
+        if target is not None:
+            room.voice_cid = target
         for t in tracks:
             room.queue.append({
                 "id": uuid.uuid4().hex,
@@ -226,6 +236,9 @@ class MusicManager:
         if track is None:
             return
         room.position = 0.0
+        # Decirle al bot en qué sala de voz debe publicar (la de quien pidió).
+        if room.voice_cid is not None:
+            await self._send_bot(channel_id, {"type": "room", "voice_cid": room.voice_cid})
         await self._send_bot(channel_id, {
             "type": "play",
             "video_id": track["video_id"],

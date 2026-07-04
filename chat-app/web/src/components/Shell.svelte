@@ -137,6 +137,10 @@
   $: currentDmUserId = view.kind === "dm" ? view.user.id : null;
   $: voiceViewName = view.kind === "voice"
     ? (channels.find((c) => c.id === view.id)?.name ?? "voz") : "voz";
+
+  // Estado REAL (en vivo) por usuario para los DMs: solo los presentes en la
+  // presencia (online) tienen su estado; el resto se muestra desconectado.
+  $: dmStatus = Object.fromEntries((online || []).map((u) => [u.id, u.status]));
   $: isMusicChannel =
     view.kind === "channel" && !!channels.find((c) => c.id === view.id)?.is_music;
   // La música suena en la VOZ de "general" (canal donde se conecta el bot).
@@ -424,6 +428,7 @@
       {currentDmUserId}
       {unread}
       dms={dmConvos}
+      {dmStatus}
       isAdmin={$me.is_admin}
       voiceMembers={voiceByChannel}
       onSelectChannel={openChannel}
