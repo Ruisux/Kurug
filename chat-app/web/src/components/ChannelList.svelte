@@ -276,11 +276,14 @@
     {/if}
   </div>
 
-  <!-- Ambientación sumi-e: torii + sol naciente al pie de la columna. -->
-  <svg class="amb" viewBox="0 0 200 130" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
-    <circle cx="100" cy="92" r="36" fill="currentColor" />
-    <path d="M40 78 H160 M46 87 H154 M60 87 V130 M140 87 V130" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" />
-    <path d="M52 78 Q100 65 148 78" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" />
+  <!-- Ambientación sumi-e: torii + sol naciente al pie de la columna.
+       Simétrico alrededor de x=120: kasagi (viga curva), nuki (viga recta) y
+       dos pilares; el sol detrás. -->
+  <svg class="amb" viewBox="0 0 240 150" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+    <circle cx="120" cy="86" r="40" fill="currentColor" />
+    <path d="M58 54 Q120 42 182 54" stroke="currentColor" stroke-width="7" fill="none" stroke-linecap="round" />
+    <path d="M84 74 H156" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round" />
+    <path d="M92 56 V150 M148 56 V150" stroke="currentColor" stroke-width="7" fill="none" stroke-linecap="round" />
   </svg>
 </aside>
 
@@ -389,8 +392,8 @@
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 64px;
-    height: 210px;
+    bottom: 108px;
+    height: 190px;
     color: var(--tx);
     opacity: 0.13;
     pointer-events: none;
