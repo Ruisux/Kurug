@@ -182,12 +182,7 @@ export async function joinVoice(channelId) {
     adaptiveStream: true,
     dynacast: true,
     webAudioMix: true,
-    audioCaptureDefaults: {
-      deviceId: pr.inputDeviceId || undefined,
-      noiseSuppression: pr.noiseSuppression,
-      echoCancellation: pr.echoCancellation,
-      autoGainControl: pr.autoGainControl,
-    },
+    audioCaptureDefaults: micAudioConstraints(),
   });
 
   room
@@ -302,30 +297,37 @@ export async function leaveVoice() {
   });
 }
 
-export function toggleMute() {
+export async function toggleMute() {
   if (!room) return;
   const enabled = room.localParticipant.isMicrophoneEnabled;
-  room.localParticipant.setMicrophoneEnabled(!enabled);
   playSound(enabled ? "mute" : "unmute");
   // Desmutear también deja de ensordecer (como en Discord).
   voiceState.update((s) => ({ ...s, muted: enabled, deafened: enabled ? s.deafened : false }));
-  if (enabled === false) restoreDeafen();
+  await room.localParticipant.setMicrophoneEnabled(!enabled);
+  // Al DESMUTEAR se re-publica el micro: reaplicar Krisp para que no se caiga.
+  if (enabled === false) {
+    restoreDeafen();
+    await applyKrisp();
+  }
 }
 
 function restoreDeafen() {
   for (const p of Object.values(peers)) applyVol(p);
 }
 
-export function toggleDeafen() {
+export async function toggleDeafen() {
   const st = get(voiceState);
   if (!st.deafened) {
-    if (room) room.localParticipant.setMicrophoneEnabled(false);
     voiceState.update((s) => ({ ...s, deafened: true, muted: true }));
     playSound("deafen");
+    if (room) await room.localParticipant.setMicrophoneEnabled(false);
   } else {
-    if (room) room.localParticipant.setMicrophoneEnabled(true);
     voiceState.update((s) => ({ ...s, deafened: false, muted: false }));
     playSound("undeafen");
+    if (room) {
+      await room.localParticipant.setMicrophoneEnabled(true);
+      await applyKrisp(); // re-publicar el micro: reaplicar el filtro
+    }
   }
   for (const p of Object.values(peers)) applyVol(p);
 }
@@ -508,17 +510,24 @@ export async function setOutputDevice(deviceId) {
   }
 }
 
+// Constraints de captura del micro. CLAVE: si Krisp está activo, desactivamos la
+// supresión de ruido del NAVEGADOR para no procesar dos veces (el doble filtrado
+// era lo que cortaba la voz). El eco y el AGC sí se mantienen.
+function micAudioConstraints() {
+  const pr = get(prefs);
+  return {
+    deviceId: pr.inputDeviceId || undefined,
+    noiseSuppression: pr.krisp ? false : pr.noiseSuppression,
+    echoCancellation: pr.echoCancellation,
+    autoGainControl: pr.autoGainControl,
+  };
+}
+
 // Reaplica las constraints del micro (supresión de ruido, eco, AGC) en vivo.
 export async function refreshMicConstraints() {
   if (!room || !room.localParticipant.isMicrophoneEnabled) return;
-  const pr = get(prefs);
   try {
-    await room.localParticipant.setMicrophoneEnabled(true, {
-      deviceId: pr.inputDeviceId || undefined,
-      noiseSuppression: pr.noiseSuppression,
-      echoCancellation: pr.echoCancellation,
-      autoGainControl: pr.autoGainControl,
-    });
+    await room.localParticipant.setMicrophoneEnabled(true, micAudioConstraints());
   } catch {}
   await applyKrisp(); // re-publicar el micro descarta el procesador: reaplicarlo
 }
@@ -552,38 +561,43 @@ async function micTrack(tries = 10) {
 }
 
 // Aplica o quita el filtro Krisp en la pista del micro según la preferencia.
-// Devuelve true si quedó aplicado. Es robusto ante reintentos y procesadores
-// obsoletos: si `setProcessor` falla, recrea el procesador y vuelve a intentar.
+// BLINDAJE: siempre quita el procesador anterior (lo destruye) y, si se quiere
+// Krisp, crea uno NUEVO. Reutilizar la instancia entre reinicios del micro
+// (mutear/reconectar) dejaba un procesador "muerto" que sacaba silencio -> la
+// voz no pasaba. Ahora nunca se reutiliza.
 async function applyKrisp() {
   if (!room) return false;
-  const want = get(prefs).krisp;
   const track = await micTrack();
   if (!track) return false;
+
+  // 1) Quitar SIEMPRE el procesador que hubiera (LiveKit lo destruye).
+  try { await track.stopProcessor(); } catch {}
+  krispProcessor = null;
+
+  if (!get(prefs).krisp) return false; // Krisp apagado: micro limpio, sin filtro.
+
+  // 2) Crear uno nuevo y aplicarlo.
   try {
     const mod = await loadKrisp();
     krispSupported = !mod.isKrispNoiseFilterSupported || mod.isKrispNoiseFilterSupported();
-    if (want && krispSupported) {
-      if (!krispProcessor) krispProcessor = mod.KrispNoiseFilter();
-      try {
-        await track.setProcessor(krispProcessor);
-      } catch {
-        // El procesador puede haber quedado atado a una sala/pista anterior;
-        // recrearlo desde cero y reintentar una vez.
-        try { krispProcessor = mod.KrispNoiseFilter(); await track.setProcessor(krispProcessor); }
-        catch { return false; }
-      }
-      return true;
-    } else {
-      try { await track.stopProcessor(); } catch {}
-      return false;
-    }
-  } catch {
+    if (!krispSupported) return false;
+    const proc = mod.KrispNoiseFilter();
+    await track.setProcessor(proc);
+    krispProcessor = proc;
+    return true;
+  } catch (e) {
+    // Si algo falla, dejamos el micro SIN filtro (mejor voz cruda que silencio).
     krispSupported = false;
+    krispProcessor = null;
+    try { await track.stopProcessor(); } catch {}
+    console.warn("Krisp:", e);
     return false;
   }
 }
 
 export async function setKrisp(on) {
   setPref("krisp", on);
-  await applyKrisp();
+  // Al cambiar Krisp cambia también la supresión del navegador (on/off), así que
+  // re-capturamos el micro con las constraints correctas y reaplicamos el filtro.
+  await refreshMicConstraints();
 }
