@@ -13,7 +13,9 @@
 
   $: st = $musicState;
   $: track = st.current != null ? st.queue[st.current] : null;
-  $: listening = $voiceState.active && $voiceState.channelId === voiceChannelId;
+  // La música suena en TU canal de voz: el mini-reproductor aparece si estás en
+  // cualquier voz (no solo en la de "general").
+  $: listening = $voiceState.active;
 </script>
 
 {#if track && listening && hidden}

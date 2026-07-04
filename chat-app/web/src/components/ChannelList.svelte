@@ -4,6 +4,15 @@
     voiceState, toggleMute, toggleDeafen, toggleShare, toggleCamera, leaveVoice,
   } from "../lib/voice.js";
   import { jpLabels, channelKanji } from "../lib/appearance.js";
+  import { me } from "../lib/stores.js";
+
+  // ¿Este ocupante de la voz está hablando? (yo -> meSpeaking; peers -> su flag).
+  function memberSpeaking(m) {
+    const st = $voiceState;
+    if (!st.active) return false;
+    if (m.id === $me.id) return st.meSpeaking && !st.muted;
+    return !!st.peers[m.id]?.speaking;
+  }
 
   export let channels = [];
   export let dms = [];
@@ -182,7 +191,9 @@
           <div class="vmembers">
             {#each voiceMembers[c.id] as m (m.id)}
               <span class="vm" title={m.display_name}>
-                <Avatar name={m.display_name} url={m.avatar_url} size={20} />
+                <span class="vmav" class:sp={memberSpeaking(m)}>
+                  <Avatar name={m.display_name} url={m.avatar_url} size={20} />
+                </span>
                 <span class="vm-name">{m.display_name}</span>
               </span>
             {/each}
@@ -241,26 +252,28 @@
       </div>
     {/if}
 
-    <div class="new">
-      <div class="kindpick" role="group" aria-label="Tipo de canal">
-        <button class="kb" class:on={newKind === "text"} on:click={() => (newKind = "text")}>
-          <i class="ti ti-hash"></i> Texto
-        </button>
-        <button class="kb" class:on={newKind === "voice"} on:click={() => (newKind = "voice")}>
-          <i class="ti ti-volume"></i> Voz
-        </button>
+    {#if isAdmin}
+      <div class="new">
+        <div class="kindpick" role="group" aria-label="Tipo de canal">
+          <button class="kb" class:on={newKind === "text"} on:click={() => (newKind = "text")}>
+            <i class="ti ti-hash"></i> Texto
+          </button>
+          <button class="kb" class:on={newKind === "voice"} on:click={() => (newKind = "voice")}>
+            <i class="ti ti-volume"></i> Voz
+          </button>
+        </div>
+        <div class="newrow">
+          <input
+            placeholder={newKind === "voice" ? "nuevo canal de voz" : "nuevo canal"}
+            bind:value={newName}
+            on:keydown={(e) => e.key === "Enter" && create()}
+          />
+          <button class="add" on:click={create} aria-label="Crear canal">
+            <i class="ti ti-plus"></i>
+          </button>
+        </div>
       </div>
-      <div class="newrow">
-        <input
-          placeholder={newKind === "voice" ? "nuevo canal de voz" : "nuevo canal"}
-          bind:value={newName}
-          on:keydown={(e) => e.key === "Enter" && create()}
-        />
-        <button class="add" on:click={create} aria-label="Crear canal">
-          <i class="ti ti-plus"></i>
-        </button>
-      </div>
-    </div>
+    {/if}
   </div>
 
   <!-- Ambientación sumi-e: torii + sol naciente al pie de la columna. -->
@@ -376,14 +389,14 @@
     position: absolute;
     left: 0;
     right: 0;
-    bottom: -6px;
-    height: 150px;
+    bottom: 64px;
+    height: 210px;
     color: var(--tx);
-    opacity: 0.08;
+    opacity: 0.13;
     pointer-events: none;
     z-index: 0;
   }
-  :global(:root[data-theme="light"]) .amb { opacity: 0.13; }
+  :global(:root[data-theme="light"]) .amb { opacity: 0.18; }
   .row {
     display: flex;
     align-items: center;
@@ -479,6 +492,16 @@
     font-size: 12px;
     color: var(--mut);
     min-width: 0;
+  }
+  .vmav {
+    display: inline-flex;
+    flex: none;
+    border-radius: 50%;
+    transition: box-shadow 0.1s;
+  }
+  /* Aro de tinta verde cuando ese ocupante está hablando. */
+  .vmav.sp {
+    box-shadow: 0 0 0 2px var(--on, #6bbf59), 0 0 0 4px rgba(107, 191, 89, 0.3);
   }
   .vm-name {
     overflow: hidden;

@@ -148,14 +148,14 @@
     position: absolute;
     left: 0;
     right: 0;
-    bottom: -6px;
-    height: 150px;
+    bottom: 14px;
+    height: 210px;
     color: var(--tx);
-    opacity: 0.07;
+    opacity: 0.12;
     pointer-events: none;
     z-index: 0;
   }
-  :global(:root[data-theme="light"]) .amb { opacity: 0.13; }
+  :global(:root[data-theme="light"]) .amb { opacity: 0.17; }
   .hanko {
     font-size: 10px;
     width: 18px;
