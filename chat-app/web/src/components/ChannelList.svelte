@@ -498,7 +498,7 @@
     display: inline-flex;
     flex: none;
     border-radius: 50%;
-    transition: box-shadow 0.1s;
+    transition: box-shadow 0.05s; /* encendido casi instantáneo del aro */
   }
   /* Aro de tinta verde cuando ese ocupante está hablando. */
   .vmav.sp {

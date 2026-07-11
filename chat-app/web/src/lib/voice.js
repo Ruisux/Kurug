@@ -217,15 +217,6 @@ export async function joinVoice(channelId) {
       const p = peers[pt.identity];
       if (p && pub.kind === Track.Kind.Audio) { p.micMuted = false; publish(); }
     })
-    .on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
-      // LiveKit avisa quién habla (voz por encima del umbral). Iluminamos su
-      // avatar en la barra de voz para saber de dónde vienen los sonidos.
-      const ids = new Set(speakers.map((s) => s.identity));
-      const localId = room?.localParticipant?.identity;
-      for (const p of Object.values(peers)) p.speaking = ids.has(p.id);
-      voiceState.update((s) => ({ ...s, meSpeaking: localId ? ids.has(localId) : false }));
-      publish();
-    })
     .on(RoomEvent.Disconnected, () => { if (get(voiceState).active) leaveVoice(); });
 
   try {
@@ -265,6 +256,7 @@ export async function joinVoice(channelId) {
   }));
   playSound("join"); // sonido al ENTRAR tú a la voz
   publish();
+  startLevelMonitor(); // aro verde instantáneo (medición local, no del servidor)
 
   // Supresión de ruido avanzada (Krisp): se aplica DESPUÉS de mostrar la UI,
   // pero esperando de verdad a que la pista esté lista, para que quede activa al
@@ -272,8 +264,110 @@ export async function joinVoice(channelId) {
   if (micOk) await applyKrisp();
 }
 
+// --- Detección LOCAL de quién habla (sin el retardo del servidor) ---
+// El evento ActiveSpeakersChanged de LiveKit se calcula en el servidor y llega
+// con ~300 ms de retraso y umbral lento: el aro verde iba "a destiempo". Aquí
+// medimos el volumen de cada pista de audio EN el cliente cada 40 ms con un
+// AnalyserNode: se enciende con el primer golpe de sonido, sin lag.
+let lvlCtx = null;   // AudioContext propio del medidor
+let lvlTimer = 0;    // fallback con setInterval si no hay ScriptProcessor
+let lvlPump = null;  // nodo que dispara el tick desde el hilo de AUDIO (sin
+                     // throttling: setInterval se frena a 1/s con la ventana
+                     // oculta/minimizada y el aro se congelaría)
+let lvlNodes = new WeakMap(); // MediaStreamTrack -> AnalyserNode
+let lvlLast = {};    // id -> timestamp del último pico (para el "hold")
+
+const SPEAK_RMS = 0.02;      // volumen mínimo (RMS) que cuenta como sonido
+const SPEAK_HOLD_MS = 220;   // el aro se mantiene un instante tras el último pico
+const LVL_TICK_MS = 40;      // 25 mediciones por segundo
+
+function lvlAnalyser(mst) {
+  let an = lvlNodes.get(mst);
+  if (!an) {
+    try {
+      const src = lvlCtx.createMediaStreamSource(new MediaStream([mst]));
+      an = lvlCtx.createAnalyser();
+      an.fftSize = 512; // ~10 ms de ventana: respuesta inmediata
+      src.connect(an);  // solo mide; no suena (no va a destination)
+      lvlNodes.set(mst, an);
+    } catch { return null; }
+  }
+  return an;
+}
+
+function lvlSpeaking(id, mst, now, buf) {
+  if (mst && mst.readyState === "live") {
+    const an = lvlAnalyser(mst);
+    if (an) {
+      an.getFloatTimeDomainData(buf);
+      let e = 0;
+      for (let i = 0; i < buf.length; i++) e += buf[i] * buf[i];
+      if (Math.sqrt(e / buf.length) >= SPEAK_RMS) lvlLast[id] = now;
+    }
+  }
+  return now - (lvlLast[id] || 0) < SPEAK_HOLD_MS;
+}
+
+function startLevelMonitor() {
+  stopLevelMonitor();
+  try {
+    lvlCtx = new AudioContext();
+    if (lvlCtx.state === "suspended") lvlCtx.resume().catch(() => {});
+  } catch { return; }
+  const buf = new Float32Array(512);
+  const tick = () => {
+    if (!room) return;
+    const now = performance.now();
+    let changed = false;
+
+    // Yo: se mide la pista del micro PUBLICADA (si está muteada no cuenta).
+    const meTrack = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+    const meMst = meTrack && !meTrack.isMuted ? meTrack.mediaStreamTrack : null;
+    const meSp = lvlSpeaking("me", meMst, now, buf);
+    if (meSp !== get(voiceState).meSpeaking) {
+      voiceState.update((s) => ({ ...s, meSpeaking: meSp }));
+      changed = true;
+    }
+
+    // Los demás: su pista de audio suscrita (el bot no lleva aro: hidden).
+    for (const p of Object.values(peers)) {
+      const sp = lvlSpeaking(p.id, p.micMuted ? null : p.audioTrack?.mediaStreamTrack, now, buf);
+      if (sp !== !!p.speaking) { p.speaking = sp; changed = true; }
+    }
+    if (changed) publish();
+  };
+
+  // Reloj en el hilo de audio: un ScriptProcessor de 2048 muestras dispara
+  // cada ~43 ms a 48 kHz pase lo que pase con la ventana. Si no existiera,
+  // caemos a setInterval (con ventana visible funciona igual de bien).
+  if (lvlCtx.createScriptProcessor) {
+    lvlPump = lvlCtx.createScriptProcessor(2048, 1, 1);
+    lvlPump.onaudioprocess = tick;
+    const mute = lvlCtx.createGain();
+    mute.gain.value = 0; // el pump no debe sonar: solo marca el ritmo
+    lvlPump.connect(mute);
+    mute.connect(lvlCtx.destination);
+  } else {
+    lvlTimer = setInterval(tick, LVL_TICK_MS);
+  }
+}
+
+function stopLevelMonitor() {
+  clearInterval(lvlTimer);
+  lvlTimer = 0;
+  if (lvlPump) {
+    try { lvlPump.onaudioprocess = null; lvlPump.disconnect(); } catch {}
+    lvlPump = null;
+  }
+  lvlLast = {};
+  lvlNodes = new WeakMap();
+  try { lvlCtx?.close(); } catch {}
+  lvlCtx = null;
+}
+
 export async function leaveVoice() {
   if (get(voiceState).active) playSound("leave"); // sonido al SALIR tú de la voz
+  stopLevelMonitor();
   if (room) {
     try { await room.disconnect(); } catch {}
     room = null;
