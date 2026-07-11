@@ -19,9 +19,14 @@
   export let channelName = "voz";
   export let onBack = () => {};
 
+  // Solo reasigna si el stream de verdad cambió: re-poner el mismo srcObject
+  // reinicia el <video> y provoca parpadeos en cada re-render.
   function srcObject(node, stream) {
     node.srcObject = stream || null;
-    return { update(s) { node.srcObject = s || null; }, destroy() { node.srcObject = null; } };
+    return {
+      update(s) { if (node.srcObject !== (s || null)) node.srcObject = s || null; },
+      destroy() { node.srcObject = null; },
+    };
   }
   function fs(e) {
     e.currentTarget.closest(".tile")?.querySelector("video")?.requestFullscreen?.();

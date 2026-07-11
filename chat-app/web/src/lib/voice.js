@@ -533,12 +533,29 @@ export async function setQuality(q) {
   }
 }
 
+// Streams locales para previsualizar en mi propia UI. CACHEADOS: si cada
+// llamada devolviera un `new MediaStream(...)`, cada re-render de Svelte
+// reasignaría un srcObject "nuevo" al <video> y este se reiniciaría -> el
+// parpadeo constante al compartir/ver. Con la caché, mientras la pista sea la
+// misma se devuelve SIEMPRE el mismo objeto y el vídeo ni se entera.
+let shareCache = { track: null, stream: null };
+let cameraCache = { track: null, stream: null };
+
+function cachedStream(cache, source) {
+  if (!room) return null;
+  const t = room.localParticipant.getTrackPublication(source)?.track;
+  if (!t) { cache.track = cache.stream = null; return null; }
+  const mst = t.mediaStreamTrack;
+  if (cache.track !== mst) {
+    cache.track = mst;
+    cache.stream = new MediaStream([mst]);
+  }
+  return cache.stream;
+}
+
 // Stream local de pantalla, para previsualizarlo en mi propia UI.
 export function localShareStream() {
-  if (!room) return null;
-  const pub = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
-  const t = pub?.track;
-  return t ? new MediaStream([t.mediaStreamTrack]) : null;
+  return cachedStream(shareCache, Track.Source.ScreenShare);
 }
 
 // --- Cámara ---
@@ -556,12 +573,9 @@ export async function toggleCamera() {
   }
 }
 
-// Stream local de la cámara, para verme a mí mismo.
+// Stream local de la cámara, para verme a mí mismo (cacheado, ver arriba).
 export function localCameraStream() {
-  if (!room) return null;
-  const pub = room.localParticipant.getTrackPublication(Track.Source.Camera);
-  const t = pub?.track;
-  return t ? new MediaStream([t.mediaStreamTrack]) : null;
+  return cachedStream(cameraCache, Track.Source.Camera);
 }
 
 // --- Volumen del bot de música (local, por persona) ---

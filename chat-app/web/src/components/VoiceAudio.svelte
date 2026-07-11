@@ -4,11 +4,13 @@
   // muted) para que el sonido por Web Audio no se corte al cambiar de vista.
   import { voiceState } from "../lib/voice.js";
 
+  // Solo reasigna si el stream cambió: re-poner el mismo srcObject reinicia
+  // el elemento (cortes/parpadeos en cada re-render).
   function srcObject(node, stream) {
     node.srcObject = stream || null;
     return {
       update(s) {
-        node.srcObject = s || null;
+        if (node.srcObject !== (s || null)) node.srcObject = s || null;
       },
       destroy() {
         node.srcObject = null;

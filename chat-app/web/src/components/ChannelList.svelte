@@ -207,7 +207,9 @@
     {/if}
 
     {#if dms.length}
-      <div class="lbl">Directos</div>
+      <!-- Separador de tinta entre Voz y Directos -->
+      <div class="ink"><svg viewBox="0 0 200 6" preserveAspectRatio="none" aria-hidden="true"><path d="M2 3 C40 1 70 5 110 3 S180 4 198 2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></div>
+      <div class="lbl">Directos{#if $jpLabels}<span class="lk">ダイレクト</span>{/if}</div>
       {#each dms as d (d.user.id)}
         <button
           class="ch dm"

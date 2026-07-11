@@ -21,11 +21,13 @@
   let minimized = false;
 
   // Acción para asignar un MediaStream a <audio>/<video> (no se puede con bind).
+  // Solo reasigna si cambió: re-poner el mismo srcObject reinicia el vídeo
+  // (parpadeo en cada re-render).
   function srcObject(node, stream) {
     node.srcObject = stream || null;
     return {
       update(s) {
-        node.srcObject = s || null;
+        if (node.srcObject !== (s || null)) node.srcObject = s || null;
       },
       destroy() {
         node.srcObject = null;

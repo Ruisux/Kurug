@@ -377,6 +377,24 @@
     if (!($voiceState.active && $voiceState.channelId === id)) joinVoice(id);
   }
 
+  // Al SALIR de la llamada (botón de colgar, desconexión…) no tiene sentido
+  // seguir viendo los recuadros: volvemos al primer canal de texto. El flag
+  // distingue "estuve dentro y salí" de "aún me estoy conectando" (mientras
+  // conecta, active también es false y no hay que echar a nadie de la vista).
+  let wasInVoice = false;
+  $: {
+    if ($voiceState.active) wasInVoice = true;
+    else if (wasInVoice) {
+      wasInVoice = false;
+      if (view.kind === "voice") {
+        const first = channels.find((c) => c.kind !== "voice" && !c.is_music)
+          || channels.find((c) => c.kind !== "voice");
+        if (first) openChannel(first.id);
+        else view = { kind: "none" };
+      }
+    }
+  }
+
   // Reordena de forma optimista y persiste el nuevo orden en el server.
   async function reorderChannels(orderedIds) {
     const pos = new Map(orderedIds.map((id, i) => [id, i]));
