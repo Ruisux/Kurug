@@ -85,7 +85,7 @@
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: $prefs.inputDeviceId || undefined,
-          noiseSuppression: $prefs.noiseSuppression,
+          noiseSuppression: false, // la única supresión es la nuestra (RNNoise)
           echoCancellation: $prefs.echoCancellation,
           autoGainControl: $prefs.autoGainControl,
         },
@@ -264,12 +264,7 @@
       <label class="switch">
         <input type="checkbox" checked={$prefs.krisp} on:change={(e) => setKrisp(e.target.checked)} />
         <span class="track"><span class="thumb"></span></span>
-        <span class="sw-txt">Supresión de ruido avanzada (Krisp)<small>quita teclado, ventilador, voces de fondo</small></span>
-      </label>
-      <label class="switch" class:dim={$prefs.krisp}>
-        <input type="checkbox" checked={$prefs.noiseSuppression} disabled={$prefs.krisp} on:change={(e) => onToggleConstraint("noiseSuppression", e.target.checked)} />
-        <span class="track"><span class="thumb"></span></span>
-        <span class="sw-txt">Supresión de ruido básica (navegador){#if $prefs.krisp}<small>desactivada mientras uses Krisp (evita doble filtrado)</small>{/if}</span>
+        <span class="sw-txt">Supresión de ruido (RNNoise)<small>quita teclado, ventilador y ruido de fondo — corre en tu equipo, como el Discord clásico</small></span>
       </label>
       <label class="switch">
         <input type="checkbox" checked={$prefs.echoCancellation} on:change={(e) => onToggleConstraint("echoCancellation", e.target.checked)} />

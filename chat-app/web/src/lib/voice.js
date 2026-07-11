@@ -16,6 +16,7 @@ import { playSound } from "./sounds.js";
 import { wsBase } from "./server.js";
 import { screenPicker } from "./desktop.js";
 import { pickScreen } from "./screenshare.js";
+import { createNoiseProcessor, preloadNoiseModel, isNoiseSupported } from "./noise.js";
 
 // Presets de calidad al compartir pantalla. Más opciones que solo fluido/nítido.
 // VP9 comprime mejor el texto/código que el VP8 por defecto. "res:null" = sin
@@ -510,20 +511,20 @@ export async function setOutputDevice(deviceId) {
   }
 }
 
-// Constraints de captura del micro. CLAVE: si Krisp está activo, desactivamos la
-// supresión de ruido del NAVEGADOR para no procesar dos veces (el doble filtrado
-// era lo que cortaba la voz). El eco y el AGC sí se mantienen.
+// Constraints de captura del micro. La supresión del NAVEGADOR va SIEMPRE
+// apagada: la única supresión de ruido es la nuestra (RNNoise, ver noise.js);
+// dos filtros en cadena degradaban la voz. El eco y el AGC sí se mantienen.
 function micAudioConstraints() {
   const pr = get(prefs);
   return {
     deviceId: pr.inputDeviceId || undefined,
-    noiseSuppression: pr.krisp ? false : pr.noiseSuppression,
+    noiseSuppression: false,
     echoCancellation: pr.echoCancellation,
     autoGainControl: pr.autoGainControl,
   };
 }
 
-// Reaplica las constraints del micro (supresión de ruido, eco, AGC) en vivo.
+// Reaplica las constraints del micro (eco, AGC) en vivo.
 export async function refreshMicConstraints() {
   if (!room || !room.localParticipant.isMicrophoneEnabled) return;
   try {
@@ -532,21 +533,16 @@ export async function refreshMicConstraints() {
   await applyKrisp(); // re-publicar el micro descarta el procesador: reaplicarlo
 }
 
-// --- Supresión de ruido avanzada (Krisp, modelo de LiveKit) ---
-let krispMod = null;       // módulo cargado bajo demanda (trae WASM, ~MB)
-let krispProcessor = null; // instancia reutilizable
+// --- Supresión de ruido (RNNoise, la tecnología del Discord clásico) ---
+// El paquete de Krisp de LiveKit exigía licencia de LiveKit Cloud y en nuestro
+// servidor auto-hospedado NO suprimía nada. Detalles en lib/noise.js.
+let krispProcessor = null; // procesador RNNoise activo en la pista del micro
 export let krispSupported = true;
 
-export async function loadKrisp() {
-  if (!krispMod) krispMod = await import("@livekit/krisp-noise-filter");
-  return krispMod;
-}
-
-// Precarga el WASM de Krisp en segundo plano (al abrir la app), para que al
-// entrar a la voz el filtro se pueda aplicar YA, sin la demora de la descarga
-// que hacía que "pareciera activo pero no lo estuviera" hasta re-togglearlo.
+// Precarga el WASM de RNNoise en segundo plano (al abrir la app), para que al
+// entrar a la voz el filtro se aplique YA, sin la demora de la descarga.
 export function preloadKrisp() {
-  loadKrisp().catch(() => {});
+  if (isNoiseSupported()) preloadNoiseModel().catch(() => {});
 }
 
 // Espera a que la pista del micro esté publicada (tras setMicrophoneEnabled la
@@ -560,11 +556,10 @@ async function micTrack(tries = 10) {
   return null;
 }
 
-// Aplica o quita el filtro Krisp en la pista del micro según la preferencia.
+// Aplica o quita el filtro RNNoise en la pista del micro según la preferencia.
 // BLINDAJE: siempre quita el procesador anterior (lo destruye) y, si se quiere
-// Krisp, crea uno NUEVO. Reutilizar la instancia entre reinicios del micro
-// (mutear/reconectar) dejaba un procesador "muerto" que sacaba silencio -> la
-// voz no pasaba. Ahora nunca se reutiliza.
+// supresión, crea uno NUEVO. Reutilizar la instancia entre reinicios del micro
+// (mutear/reconectar) deja un procesador "muerto" que saca silencio.
 async function applyKrisp() {
   if (!room) return false;
   const track = await micTrack();
@@ -574,14 +569,13 @@ async function applyKrisp() {
   try { await track.stopProcessor(); } catch {}
   krispProcessor = null;
 
-  if (!get(prefs).krisp) return false; // Krisp apagado: micro limpio, sin filtro.
+  if (!get(prefs).krisp) return false; // supresión apagada: micro limpio.
 
   // 2) Crear uno nuevo y aplicarlo.
   try {
-    const mod = await loadKrisp();
-    krispSupported = !mod.isKrispNoiseFilterSupported || mod.isKrispNoiseFilterSupported();
+    krispSupported = isNoiseSupported();
     if (!krispSupported) return false;
-    const proc = mod.KrispNoiseFilter();
+    const proc = createNoiseProcessor();
     await track.setProcessor(proc);
     krispProcessor = proc;
     return true;
@@ -590,14 +584,13 @@ async function applyKrisp() {
     krispSupported = false;
     krispProcessor = null;
     try { await track.stopProcessor(); } catch {}
-    console.warn("Krisp:", e);
+    console.warn("Supresión de ruido:", e);
     return false;
   }
 }
 
 export async function setKrisp(on) {
   setPref("krisp", on);
-  // Al cambiar Krisp cambia también la supresión del navegador (on/off), así que
-  // re-capturamos el micro con las constraints correctas y reaplicamos el filtro.
-  await refreshMicConstraints();
+  if (!room) return;
+  await applyKrisp(); // aplica/quita el filtro en vivo, sin re-capturar el micro
 }

@@ -8,10 +8,9 @@ const KEY = "kurug-audio-prefs";
 const defaults = {
   inputDeviceId: "",        // "" = dispositivo por defecto del sistema
   outputDeviceId: "",
-  noiseSuppression: true,
   echoCancellation: true,
   autoGainControl: true,
-  krisp: true,              // supresión de ruido avanzada (modelo Krisp de LiveKit)
+  krisp: true,              // supresión de ruido (RNNoise local; la clave se llama "krisp" por herencia)
   soundsEnabled: true,      // efectos de UI (mute, entrar, salir…)
   notificationSound: true,  // sonido al recibir mensajes/menciones
   botVolume: 100,           // volumen local de la música (0-200)

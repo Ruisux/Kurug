@@ -12,7 +12,7 @@
   let booting = true;
 
   onMount(async () => {
-    preloadKrisp(); // descarga el WASM de Krisp en segundo plano (no bloquea)
+    preloadKrisp(); // descarga el WASM de RNNoise en segundo plano (no bloquea)
     if (get(token)) {
       try {
         me.set(await api.me());
