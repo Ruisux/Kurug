@@ -1,7 +1,7 @@
 {
   "name": "kurug-web",
   "private": true,
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Kurug — chat, voz y compartir pantalla auto-hospedado.",
   "author": "Ruisux",
   "homepage": "https://github.com/Ruisux/Kurug",
