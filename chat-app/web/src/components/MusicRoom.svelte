@@ -18,7 +18,15 @@
   $: listening = $voiceState.active && $voiceState.channelId === voiceChannelId;
 
   // Resincroniza la posición con cada estado del servidor; el ticker la avanza.
-  const unsub = musicState.subscribe((s) => (displayPos = s.position || 0));
+  // OJO: al empezar una canción el server manda playing=true con posición 0 al
+  // INSTANTE, pero el bot tarda unos segundos en arrancar el audio de verdad.
+  // Si el contador corriera ya, avanzaría en falso y se "reiniciaría" al llegar
+  // el primer progreso real. Solo avanza cuando el bot reporta posición > 0.
+  let started = false; // ¿el bot ya está emitiendo audio de esta reproducción?
+  const unsub = musicState.subscribe((s) => {
+    displayPos = s.position || 0;
+    started = (s.position || 0) > 0;
+  });
 
   function add() {
     const q = query.trim();
@@ -34,7 +42,7 @@
 
   onMount(() => {
     ticker = setInterval(() => {
-      if (get(musicState).playing) displayPos += 1;
+      if (get(musicState).playing && started) displayPos += 1;
     }, 1000);
   });
   onDestroy(() => {
@@ -58,7 +66,7 @@
     <div class="now">
       <div class="art">{#if track?.thumbnail}<img src={track.thumbnail} alt="" />{:else}<i class="ti ti-disc"></i>{/if}</div>
       <div class="info">
-        <div class="state">{st.playing ? "REPRODUCIENDO" : track ? "EN PAUSA" : "NADA SONANDO"}</div>
+        <div class="state">{st.playing ? (started ? "REPRODUCIENDO" : "CARGANDO…") : track ? "EN PAUSA" : "NADA SONANDO"}</div>
         <div class="display name">{track ? track.title : "Pega un enlace para empezar"}</div>
         <div class="by">{track ? `añadido por ${track.added_by} · desde ${track.source}` : ""}</div>
         <div class="prog">
