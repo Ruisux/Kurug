@@ -201,6 +201,12 @@ async def presence_ws(websocket: WebSocket, token: str = Query(...)):
             elif kind == "voice_leave":
                 await presence.set_voice(uid, None)
 
+            elif kind == "voice_state":
+                # Micro silenciado / ensordecido, para los iconos de ocupantes.
+                await presence.set_voice_state(
+                    uid, bool(data.get("muted")), bool(data.get("deafened")),
+                )
+
             elif kind == "dm":
                 to = data.get("to")
                 content = (data.get("content") or "").strip()

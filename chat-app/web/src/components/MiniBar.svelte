@@ -8,6 +8,7 @@
 
   export let onOpen = () => {};
   export let voiceChannelId = null; // voz donde suena la música (general)
+  export let voiceView = false; // en la vista de recuadros se recoloca (ver CSS)
 
   let hidden = false; // ocultar el mini-reproductor (se puede volver a mostrar)
 
@@ -20,14 +21,14 @@
 
 {#if track && listening && hidden}
   <!-- Botón compacto para volver a mostrar el mini-reproductor. -->
-  <button class="mini-show" on:click={() => (hidden = false)} title="Mostrar reproductor">
+  <button class="mini-show" class:vv={voiceView} on:click={() => (hidden = false)} title="Mostrar reproductor">
     <i class="ti ti-disc"></i>
     {#if st.playing}<span class="dot"></span>{/if}
   </button>
 {/if}
 
 {#if track && listening && !hidden}
-  <div class="mini">
+  <div class="mini" class:vv={voiceView}>
     <button class="open" on:click={onOpen} title="Abrir sala de música">
       <div class="art">{#if track.thumbnail}<img src={track.thumbnail} alt="" />{:else}<i class="ti ti-disc"></i>{/if}</div>
       <div class="meta">
@@ -199,10 +200,32 @@
     background: var(--on);
     border: 1.5px solid var(--pan);
   }
+  /* En la vista de recuadros (llamada): el centro real del área central está
+     desplazado por las columnas laterales (izquierda 76+256px, panel de
+     miembros 248px -> (332-248)/2 = 42px), y la barra de controles es más
+     alta; sin esto quedaba descentrado y pisando la línea de los controles. */
+  .mini.vv,
+  .mini-show.vv {
+    left: calc(50% + 42px);
+    bottom: 98px;
+  }
+  .mini.vv {
+    max-width: min(92vw - 580px, 480px);
+  }
+
   /* En móvil ahorramos espacio: ocultamos el slider (queda en la sala). */
   @media (max-width: 640px) {
     .vol {
       display: none;
+    }
+    /* Sin columnas laterales: vuelve al centro de la ventana. */
+    .mini.vv,
+    .mini-show.vv {
+      left: 50%;
+      bottom: 78px;
+    }
+    .mini.vv {
+      max-width: min(92vw, 480px);
     }
   }
 </style>

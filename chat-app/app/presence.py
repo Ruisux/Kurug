@@ -41,20 +41,25 @@ class PresenceManager:
     def __init__(self) -> None:
         self.sockets: dict[int, set[WebSocket]] = defaultdict(set)
         self.info: dict[int, dict] = {}
-        # user_id -> channel_id de la sala de voz donde está (si está en alguna).
-        # Sirve para mostrar "quién está en cada canal de voz" ANTES de entrar.
-        self.voice: dict[int, int] = {}
+        # user_id -> {"cid": channel_id, "muted": bool, "deafened": bool} de la
+        # sala de voz donde está. Sirve para mostrar "quién está en cada canal
+        # de voz" (y su estado de micro/auriculares) ANTES de entrar.
+        self.voice: dict[int, dict] = {}
 
     def voice_map(self) -> dict[int, list[dict]]:
         """channel_id -> lista de ocupantes (visibles) de esa sala de voz."""
         out: dict[int, list[dict]] = {}
-        for uid, cid in self.voice.items():
+        for uid, v in self.voice.items():
             info = self.info.get(uid)
             if not info or not _is_visible(info):
                 continue  # los invisibles no aparecen tampoco en la voz
-            out.setdefault(cid, []).append(
-                {"id": uid, "display_name": info["display_name"], "avatar_url": info["avatar_url"]}
-            )
+            out.setdefault(v["cid"], []).append({
+                "id": uid,
+                "display_name": info["display_name"],
+                "avatar_url": info["avatar_url"],
+                "muted": v.get("muted", False),
+                "deafened": v.get("deafened", False),
+            })
         return out
 
     def _voice_message(self) -> dict:
@@ -66,9 +71,19 @@ class PresenceManager:
             if self.voice.pop(user_id, None) is None:
                 return  # no estaba en voz: nada que difundir
         else:
-            if self.voice.get(user_id) == channel_id:
+            cur = self.voice.get(user_id)
+            if cur is not None and cur["cid"] == channel_id:
                 return  # sin cambios
-            self.voice[user_id] = channel_id
+            self.voice[user_id] = {"cid": channel_id, "muted": False, "deafened": False}
+        await self._broadcast(self._voice_message())
+
+    async def set_voice_state(self, user_id: int, muted: bool, deafened: bool) -> None:
+        """Actualiza el micro/auriculares de alguien que está en voz y difunde."""
+        v = self.voice.get(user_id)
+        if v is None or (v.get("muted") == muted and v.get("deafened") == deafened):
+            return
+        v["muted"] = muted
+        v["deafened"] = deafened
         await self._broadcast(self._voice_message())
 
     def online_users(self) -> list[dict]:

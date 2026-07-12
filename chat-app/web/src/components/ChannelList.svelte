@@ -213,6 +213,11 @@
                   <Avatar name={m.display_name} url={m.avatar_url} size={20} />
                 </span>
                 <span class="vm-name">{m.display_name}</span>
+                {#if m.deafened}
+                  <i class="ti ti-headphones-off vmic" title="Ensordecido"></i>
+                {:else if m.muted}
+                  <i class="ti ti-microphone-off vmic" title="Micro silenciado"></i>
+                {/if}
               </span>
             {/each}
           </div>
@@ -531,6 +536,12 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+  /* Icono de silenciado/ensordecido del ocupante. */
+  .vmic {
+    flex: none;
+    font-size: 12px;
+    color: var(--mut);
   }
   .livedot {
     width: 7px;

@@ -123,6 +123,7 @@
       emoji: r.emoji,
       count: r.count,
       mine: (r.users || []).includes(meUser.id),
+      users: r.users || [], // para el tooltip de "quiénes reaccionaron"
     }));
   }
 
@@ -157,6 +158,14 @@
     return m;
   })();
 
+  // usuario_id -> { muted, deafened } (iconos en los recuadros de la llamada).
+  $: voiceFlags = (() => {
+    const m = {};
+    for (const members of Object.values(voiceByChannel))
+      for (const u of members) m[u.id] = { muted: !!u.muted, deafened: !!u.deafened };
+    return m;
+  })();
+
   // Avisar al server (WS de presencia) en qué sala de voz estoy, para que el
   // resto vea "quién está en cada canal de voz" antes de entrar.
   $: {
@@ -166,6 +175,19 @@
       else presWs?.send({ type: "voice_leave" });
       prevVoiceCid = cid;
     }
+  }
+
+  // Y también mi estado de micro/auriculares, para que los demás vean los
+  // iconos de silenciado/ensordecido en la lista de ocupantes.
+  let prevVoiceFlags = "";
+  $: {
+    const flags = $voiceState.active
+      ? JSON.stringify({ muted: $voiceState.muted, deafened: $voiceState.deafened })
+      : "";
+    if (flags && flags !== prevVoiceFlags) {
+      presWs?.send({ type: "voice_state", ...JSON.parse(flags) });
+    }
+    prevVoiceFlags = flags;
   }
 
   onMount(async () => {
@@ -459,11 +481,11 @@
   </div>
   <div class="main">
     {#if view.kind === "voice"}
-      <VoiceView channelName={voiceViewName} onBack={backToList} />
+      <VoiceView channelName={voiceViewName} {voiceFlags} onBack={backToList} />
     {:else if isMusicChannel}
       <MusicRoom {voiceChannelId} onBack={backToList} />
     {:else}
-      <ChatView {header} channelId={currentChannelId} dmUserId={currentDmUserId} {messages} {onSend} {onDelete} {onEdit} {onReact} {onPin} onBack={backToList} />
+      <ChatView {header} channelId={currentChannelId} dmUserId={currentDmUserId} {messages} {allUsers} {onSend} {onDelete} {onEdit} {onReact} {onPin} onBack={backToList} />
     {/if}
   </div>
   <div class="aside-wrap">
@@ -491,7 +513,7 @@
 
 <!-- Mini-reproductor flotante: visible fuera de la sala de música. -->
 {#if !isMusicChannel}
-  <MiniBar {voiceChannelId} onOpen={() => $musicChannelId != null && openChannel($musicChannelId)} />
+  <MiniBar {voiceChannelId} voiceView={view.kind === "voice"} onOpen={() => $musicChannelId != null && openChannel($musicChannelId)} />
 {/if}
 
 <style>

@@ -21,6 +21,19 @@
   export let onReact = () => {};
   export let onPin = () => {};
   export let onBack = () => {};
+  export let allUsers = []; // para resolver quién reaccionó (tooltip)
+
+  // "rui, ana y tú" — quiénes usaron una reacción, para verlo al pasar el mouse.
+  $: userById = new Map(allUsers.map((u) => [u.id, u]));
+  function reactedBy(r) {
+    const names = (r.users || []).map((id) =>
+      id === $me.id ? "tú" : userById.get(id)?.display_name || "alguien",
+    );
+    if (!names.length) return "";
+    // "tú" al final, como habla la gente: "rui, ana y tú".
+    names.sort((a, b) => (a === "tú") - (b === "tú"));
+    return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} y ${names.at(-1)}`;
+  }
 
   // Selector de emojis: guardamos a qué mensaje aplica y dónde dibujarlo.
   let pickerFor = null;
@@ -525,7 +538,7 @@
           {#if m.reactions && m.reactions.length}
             <div class="reacts">
               {#each m.reactions as r (r.emoji)}
-                <button class="react" class:mine={r.mine} on:click={() => onReact(m.id, r.emoji)}>
+                <button class="react" class:mine={r.mine} data-tip={reactedBy(r)} on:click={() => onReact(m.id, r.emoji)}>
                   {r.emoji} {r.count}
                 </button>
               {/each}
@@ -995,7 +1008,29 @@
     gap: 5px;
     margin-top: 5px;
   }
+  /* Tooltip con quiénes reaccionaron (al mantener el mouse encima). */
+  .react[data-tip]:not([data-tip=""]):hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 7px);
+    transform: translateX(-50%);
+    white-space: nowrap;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: var(--pan);
+    color: var(--tx);
+    border: 1px solid var(--bd2);
+    border-radius: 9px;
+    padding: 5px 10px;
+    font-size: 11.5px;
+    box-shadow: 0 8px 22px var(--shadow);
+    pointer-events: none;
+    z-index: 30;
+  }
   .react {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 4px;

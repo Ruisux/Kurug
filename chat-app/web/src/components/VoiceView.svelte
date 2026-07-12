@@ -17,6 +17,7 @@
   } from "../lib/voice.js";
 
   export let channelName = "voz";
+  export let voiceFlags = {}; // user_id -> { muted, deafened } (por presencia)
   export let onBack = () => {};
 
   // Solo reasigna si el stream de verdad cambió: re-poner el mismo srcObject
@@ -44,11 +45,14 @@
     {
       id: "me", name: $me.display_name, avatar: $me.avatar_url, self: true,
       camera: st.cameraOn ? localCameraStream() : null, hasCamera: st.cameraOn,
-      speaking: st.meSpeaking && !st.muted, micMuted: st.muted,
+      speaking: st.meSpeaking && !st.muted, micMuted: st.muted, deafened: st.deafened,
     },
     ...peers.map((p) => ({
       id: p.id, name: p.name, avatar: p.avatar, self: false,
-      camera: p.camera, hasCamera: p.hasCamera, speaking: p.speaking, micMuted: p.micMuted,
+      camera: p.camera, hasCamera: p.hasCamera, speaking: p.speaking,
+      // Micro: lo dice LiveKit (TrackMuted) o la presencia; auriculares: presencia.
+      micMuted: p.micMuted || !!voiceFlags[p.id]?.muted,
+      deafened: !!voiceFlags[p.id]?.deafened,
     })),
   ];
 </script>
@@ -86,7 +90,8 @@
           {/if}
           <span class="lbl">
             {p.name}{#if p.self}&nbsp;(tú){/if}
-            {#if p.micMuted}<i class="ti ti-microphone-off mo"></i>{/if}
+            {#if p.deafened}<i class="ti ti-headphones-off mo" title="Ensordecido"></i>
+            {:else if p.micMuted}<i class="ti ti-microphone-off mo" title="Micro silenciado"></i>{/if}
           </span>
         </div>
       {/each}
