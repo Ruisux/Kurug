@@ -1,5 +1,6 @@
 <script>
   import Avatar from "./Avatar.svelte";
+  import UserMenu from "./UserMenu.svelte";
   import {
     voiceState, toggleMute, toggleDeafen, toggleShare, toggleCamera, leaveVoice,
   } from "../lib/voice.js";
@@ -49,6 +50,16 @@
     if (confirm(`¿Borrar el canal ${c.kind === "voice" ? "🔊" : "#"}${c.name} y todos sus mensajes?`)) {
       onDeleteChannel(c.id);
     }
+  }
+
+  // Clic derecho sobre un ocupante de la voz (igual que en la barra derecha):
+  // volumen, silenciar para mí y, si eres admin, desconectarlo.
+  let userMenu = null; // { user, x, y }
+  function openUserMenu(e, m) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (m.id === $me?.id) return; // sobre ti mismo no hay acciones
+    userMenu = { user: m, x: e.clientX, y: e.clientY };
   }
 
   let menu = null; // { channel, x, y }
@@ -191,7 +202,13 @@
         {#if (voiceMembers[c.id] || []).length}
           <div class="vmembers">
             {#each voiceMembers[c.id] as m (m.id)}
-              <span class="vm" title={m.display_name}>
+              <span
+                class="vm"
+                title="{m.display_name} · clic derecho para opciones"
+                role="button"
+                tabindex="-1"
+                on:contextmenu={(e) => openUserMenu(e, m)}
+              >
                 <span class="vmav" class:sp={memberSpeaking(m)}>
                   <Avatar name={m.display_name} url={m.avatar_url} size={20} />
                 </span>
@@ -287,6 +304,10 @@
     <path d="M52 74 Q100 62 148 74" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" />
   </svg>
 </aside>
+
+{#if userMenu}
+  <UserMenu user={userMenu.user} x={userMenu.x} y={userMenu.y} onClose={() => (userMenu = null)} />
+{/if}
 
 {#if menu}
   <div class="cm-backdrop" on:click={() => (menu = null)} on:contextmenu|preventDefault={() => (menu = null)} role="presentation"></div>
