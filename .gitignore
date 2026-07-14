@@ -44,3 +44,6 @@ chat-app/static/uploads/
 # macOS / tooling local
 .DS_Store
 .claude/
+
+# Artefactos locales de graphify (grafo de conocimiento regenerable)
+graphify-out/

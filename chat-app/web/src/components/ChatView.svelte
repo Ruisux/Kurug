@@ -25,6 +25,13 @@
 
   // "rui, ana y tú" — quiénes usaron una reacción, para verlo al pasar el mouse.
   $: userById = new Map(allUsers.map((u) => [u.id, u]));
+  $: userByName = new Map(allUsers.map((u) => [u.username, u]));
+
+  // El color de acento de cada quien pinta su nombre en el chat (personalización).
+  function nameColor(m) {
+    const u = m.userId != null ? userById.get(m.userId) : userByName.get(m.user);
+    return u?.accent_color || null;
+  }
   function reactedBy(r) {
     const names = (r.users || []).map((id) =>
       id === $me.id ? "tú" : userById.get(id)?.display_name || "alguien",
@@ -507,7 +514,7 @@
             </div>
           {/if}
           <div class="meta">
-            <span class="author" class:mine={m.mine}>{m.name}</span>
+            <span class="author" class:mine={m.mine} style={nameColor(m) ? `color: ${nameColor(m)}` : ""}>{m.name}</span>
             <span class="time">{formatTime(m.created_at)}</span>
             {#if m.edited}<span class="edited">(editado)</span>{/if}
             {#if m.pinned}<span class="pinmark"><i class="ti ti-pin"></i> fijado</span>{/if}
@@ -872,8 +879,8 @@
   }
   .msg {
     display: flex;
-    gap: 11px;
-    padding: 6px 18px;
+    gap: 12px;
+    padding: 8px 18px;
     position: relative;
   }
   .msg:hover {
@@ -917,8 +924,8 @@
     gap: 8px;
   }
   .author {
-    font-size: 13.5px;
-    font-weight: 500;
+    font-size: 14.5px;
+    font-weight: 600;
   }
   .author.mine {
     color: var(--shu);
@@ -933,9 +940,9 @@
     font-style: italic;
   }
   .text {
-    font-size: 14px;
+    font-size: 15px;
     color: var(--tx);
-    line-height: 1.55;
+    line-height: 1.6;
     margin-top: 1px;
     word-break: break-word;
     white-space: pre-wrap;

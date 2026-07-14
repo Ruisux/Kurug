@@ -3,7 +3,7 @@
   // + personalizado) y el interruptor de lecturas japonesas. El acento se guarda
   // en el perfil (accent_color); el tema y el japonés, en local.
   import { theme, THEMES, setTheme } from "../lib/theme.js";
-  import { jpLabels, toggleJpLabels, ACCENTS } from "../lib/appearance.js";
+  import { jpLabels, toggleJpLabels, ACCENTS, uiScale, UI_SCALES } from "../lib/appearance.js";
   import { me } from "../lib/stores.js";
   import { api } from "../lib/api.js";
 
@@ -72,6 +72,16 @@
       <code class="hex">{accent}</code>
     </div>
 
+    <div class="sec">Tamaño de la interfaz</div>
+    <div class="scales">
+      {#each UI_SCALES as s (s.key)}
+        <button class="scale" class:on={$uiScale === s.key} on:click={() => uiScale.set(s.key)}>
+          {s.label}
+        </button>
+      {/each}
+    </div>
+    <div class="rs" style="margin-top:6px">En "Auto" crece solo en pantallas grandes (24"+). Tu color de acento también pinta tu nombre en los chats.</div>
+
     <div class="sec">Toques japoneses</div>
     <label class="row">
       <div class="rt">
@@ -137,6 +147,13 @@
   }
   .custom input { position: absolute; inset: -4px; opacity: 0; cursor: pointer; }
   .hex { font-size: 12px; color: var(--mut); font-family: ui-monospace, monospace; }
+  .scales { display: flex; gap: 8px; flex-wrap: wrap; }
+  .scale {
+    padding: 7px 13px; border-radius: 999px; border: 1px solid var(--bd2);
+    background: var(--field); color: var(--tx); font-size: 12.5px; cursor: pointer;
+  }
+  .scale:hover { border-color: var(--shu); }
+  .scale.on { border-color: var(--shu); background: rgba(var(--shu-rgb), 0.14); color: var(--shu); }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .rl { font-size: 13.5px; color: var(--tx); }
   .rs { font-size: 11.5px; color: var(--mut); margin-top: 2px; }

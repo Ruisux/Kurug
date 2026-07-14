@@ -83,6 +83,7 @@
       created_at: m.created_at,
       name: m.author_display_name,
       avatar: m.author_avatar_url,
+      user: m.author_username, // para pintar su nombre con SU color de acento
       mine: m.author_username === meUser.username,
       canDelete: m.author_username === meUser.username || meUser.is_admin,
       canEdit: m.author_username === meUser.username,
@@ -104,6 +105,7 @@
       created_at: m.created_at,
       name: m.sender_display_name,
       avatar: m.sender_avatar_url,
+      userId: m.sender_id, // para pintar su nombre con SU color de acento
       mine: m.sender_id === meUser.id,
       canDelete: m.sender_id === meUser.id,
       canEdit: m.sender_id === meUser.id,

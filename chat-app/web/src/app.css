@@ -93,7 +93,23 @@ body {
   background: var(--ink);
   color: var(--tx);
   -webkit-font-smoothing: antialiased;
+  /* Escala de la interfaz: todo (letras, separaciones, iconos) crece junto. */
+  zoom: var(--ui-zoom, 1);
 }
+
+/* --- Tamaño de la interfaz ---
+   La app se diseñó en una pantalla de 14"; en monitores de 24"+ todo se veía
+   diminuto. En "auto" la escala sube sola con el ancho de la ventana; además
+   el usuario puede fijarla a mano en Apariencia (data-uiscale en <html>). */
+:root { --ui-zoom: 1; }
+@media (min-width: 1600px) { :root { --ui-zoom: 1.1; } }
+@media (min-width: 1920px) { :root { --ui-zoom: 1.2; } }
+@media (min-width: 2500px) { :root { --ui-zoom: 1.35; } }
+/* Elección manual: gana sobre el modo auto (van después de las media queries). */
+:root[data-uiscale="1"] { --ui-zoom: 1; }
+:root[data-uiscale="1.1"] { --ui-zoom: 1.1; }
+:root[data-uiscale="1.2"] { --ui-zoom: 1.2; }
+:root[data-uiscale="1.35"] { --ui-zoom: 1.35; }
 
 /* Subtítulos/branding latinos: Sora SemiBold por defecto. */
 .display {
