@@ -133,16 +133,38 @@ function setupDisplayMedia() {
 }
 
 // --- Auto-update (electron-updater; lee la config de publish del builder) ---
+// Log a archivo para poder diagnosticar updates fallidos en máquinas ajenas:
+// %APPDATA%/kurug-web/updater.log (Windows) / ~/Library/Application Support (Mac).
+function updLog(...parts) {
+  try {
+    const line = `[${new Date().toISOString()}] ${parts.join(" ")}\n`;
+    fs.appendFileSync(path.join(app.getPath("userData"), "updater.log"), line);
+  } catch {}
+}
+
 function setupUpdater() {
   autoUpdater.autoDownload = false; // descargar solo al pulsar "Actualizar"
   autoUpdater.autoInstallOnAppQuit = true;
+  // Descarga SIEMPRE el instalador completo. El parche diferencial (blockmap)
+  // falla a veces en silencio con GitHub Releases y deja el botón "muerto".
+  autoUpdater.disableDifferentialDownload = true;
+  autoUpdater.logger = {
+    info: (m) => updLog("info:", m), warn: (m) => updLog("warn:", m),
+    error: (m) => updLog("error:", m), debug: () => {},
+  };
   const send = (ch, data) => mainWindow?.webContents.send(ch, data);
   autoUpdater.on("update-available", (info) =>
     send("updater:available", { version: info.version, notes: info.releaseNotes || "" }),
   );
-  autoUpdater.on("error", (err) => send("updater:error", String(err)));
+  autoUpdater.on("error", (err) => { updLog("error:", err?.stack || err); send("updater:error", String(err)); });
   autoUpdater.on("download-progress", (p) => send("updater:progress", (p.percent || 0) / 100));
-  autoUpdater.on("update-downloaded", () => autoUpdater.quitAndInstall());
+  autoUpdater.on("update-downloaded", () => {
+    updLog("update-downloaded; instalando en silencio");
+    send("updater:downloaded");
+    // Instala SIN el asistente de NSIS (/S) y relanza la app sola. setImmediate
+    // deja terminar el evento antes de cerrar (recomendación de electron-updater).
+    setImmediate(() => autoUpdater.quitAndInstall(true, true));
+  });
 }
 ipcMain.handle("updater:check", async () => {
   if (!app.isPackaged) return; // el auto-update solo aplica empaquetado

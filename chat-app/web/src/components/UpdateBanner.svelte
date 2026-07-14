@@ -22,11 +22,13 @@
       <b>Actualización disponible</b>
       <span>v{st.version} lista para instalar</span>
     </div>
-    {#if st.downloading}
+    {#if st.installing}
+      <span class="pct">Instalando… la app se reinicia sola</span>
+    {:else if st.downloading}
       <div class="prog"><div class="bar" style="width:{Math.round(st.progress * 100)}%"></div></div>
       <span class="pct">{Math.round(st.progress * 100)}%</span>
     {:else if st.error}
-      <span class="err">No se pudo actualizar</span>
+      <span class="err" title={st.error}>No se pudo: {st.error.slice(0, 80)}</span>
       <button class="go" on:click={installUpdate}>Reintentar</button>
     {:else}
       <button class="go" on:click={installUpdate}>Actualizar y reiniciar</button>

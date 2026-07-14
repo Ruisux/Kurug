@@ -3,12 +3,13 @@
 import { writable } from "svelte/store";
 import { isElectron, updater as desktopUpdater } from "./desktop.js";
 
-// { available, version, notes, downloading, progress(0..1), error }
+// { available, version, notes, downloading, installing, progress(0..1), error }
 export const updateState = writable({
   available: false,
   version: "",
   notes: "",
   downloading: false,
+  installing: false, // descargado: instalando en silencio y reiniciando
   progress: 0,
   error: "",
 });
@@ -24,9 +25,12 @@ function wire() {
     updateState.update((s) => ({ ...s, downloading: true, progress: p || 0 })),
   );
   desktopUpdater.on("error", (e) =>
-    updateState.update((s) => ({ ...s, downloading: false, error: String(e) })),
+    updateState.update((s) => ({ ...s, downloading: false, installing: false, error: String(e) })),
   );
-  // "update-downloaded" reinicia solo (quitAndInstall en el proceso principal).
+  // Descargado: el proceso principal instala en silencio y reinicia solo.
+  desktopUpdater.on("downloaded", () =>
+    updateState.update((s) => ({ ...s, downloading: false, installing: true })),
+  );
 }
 
 export async function checkForUpdates() {
