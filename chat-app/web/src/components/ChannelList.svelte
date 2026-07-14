@@ -326,7 +326,7 @@
 
 <style>
   .col {
-    width: 256px;
+    width: 284px;
     background: var(--pan);
     border-right: 1px solid var(--bd);
     display: flex;
@@ -467,10 +467,10 @@
     text-align: left;
     background: none;
     border: none;
-    padding: 11px 12px;
+    padding: 12px 13px;
     border-radius: 11px;
     color: var(--mut);
-    font-size: 14.5px;
+    font-size: 15px;
   }
   .ch:hover {
     color: var(--tx);

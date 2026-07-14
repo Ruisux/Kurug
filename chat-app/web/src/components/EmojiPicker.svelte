@@ -179,9 +179,9 @@
   .emoji {
     background: none;
     border: none;
-    font-size: 20px;
+    font-size: 25px;
     line-height: 1;
-    padding: 5px 0;
+    padding: 6px 0;
     border-radius: 7px;
     cursor: pointer;
   }

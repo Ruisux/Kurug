@@ -107,7 +107,7 @@
 
 <style>
   .col {
-    width: 248px;
+    width: 300px;
     background: var(--pan);
     border-left: 1px solid var(--bd);
     display: flex;
@@ -238,7 +238,7 @@
     display: flex;
     align-items: center;
     gap: 5px;
-    font-size: 13.5px;
+    font-size: 14.5px;
     font-weight: 500;
     color: var(--tx);
     white-space: nowrap;
@@ -250,7 +250,7 @@
     font-size: 13px;
   }
   .cs {
-    font-size: 11.5px;
+    font-size: 12.5px;
     color: var(--mut);
     white-space: nowrap;
     overflow: hidden;

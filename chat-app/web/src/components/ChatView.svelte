@@ -504,7 +504,7 @@
   <div class="messages" bind:this={scroller}>
     {#each messages as m (m.id)}
       <article class="msg" class:flash={flashId === m.id} data-mid={m.id}>
-        <Avatar name={m.name} url={m.avatar} size={36} />
+        <Avatar name={m.name} url={m.avatar} size={40} />
         <div class="body">
           {#if m.replyTo}
             <div class="replyctx">
@@ -924,14 +924,14 @@
     gap: 8px;
   }
   .author {
-    font-size: 14.5px;
+    font-size: 15.5px;
     font-weight: 600;
   }
   .author.mine {
     color: var(--shu);
   }
   .time {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--fnt);
   }
   .edited {
@@ -940,9 +940,9 @@
     font-style: italic;
   }
   .text {
-    font-size: 15px;
+    font-size: 16px;
     color: var(--tx);
-    line-height: 1.6;
+    line-height: 1.65;
     margin-top: 1px;
     word-break: break-word;
     white-space: pre-wrap;
@@ -1040,14 +1040,14 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     background: var(--pan);
     border: 1px solid var(--bd2);
     border-radius: 999px;
-    padding: 1px 9px;
-    font-size: 12px;
+    padding: 4px 13px;
+    font-size: 15px; /* el emoji de la reacción, bien visible */
     color: var(--tx);
-    line-height: 1.6;
+    line-height: 1.5;
   }
   .react:hover {
     border-color: var(--shu);
@@ -1450,8 +1450,8 @@
     background: var(--pan);
     border: 1px solid var(--bd2);
     border-radius: 11px;
-    padding: 11px 14px;
-    font-size: 14px;
+    padding: 13px 16px;
+    font-size: 15.5px;
     outline: none;
   }
   .composer input:focus {
