@@ -6,7 +6,12 @@
 //
 // Mantenemos el MISMO `voiceState` y las mismas funciones que usaba la UI para
 // no tocar VoicePanel/UserMenu más de lo necesario. El audio se reproduce con
-// LiveKit (webAudioMix) y el volumen por persona (0-200%) usa su GainNode.
+// los <audio> que adjunta LiveKit y el volumen por persona (0-100%) se aplica
+// sobre ellos. OJO: NO usar `webAudioMix` — en livekit-client 2.x tiene una
+// carrera: si la pista se adjunta antes de que exista su AudioContext, el
+// <audio> queda sonando a tope SIN mutear en paralelo al GainNode (el volumen
+// dejaba de responder: el bot al 1% seguía fuerte). Con una sola ruta de audio
+// el control es determinista.
 
 import { writable, get } from "svelte/store";
 import { Room, RoomEvent, Track } from "livekit-client";
@@ -33,6 +38,7 @@ const SCREEN_CODEC = "vp9"; // mejor que vp8 para pantalla (texto nítido)
 // Estado reactivo para la UI (misma forma que la versión mesh).
 export const voiceState = writable({
   active: false,
+  connecting: false, // entre "clic en el canal" y "conectado" (feedback inmediato)
   channelId: null,
   muted: false,
   deafened: false,
@@ -101,11 +107,12 @@ function peerFor(participant) {
       },
       camera: null, // MediaStream de su cámara
       screen: null, // MediaStream de su pantalla compartida
-      audioTrack: null,
+      audioTrack: null,  // su micro
+      screenAudio: null, // el audio de su pantalla compartida (pista aparte)
       audioEl: null,
       micMuted: false, // si tiene el micro silenciado
       // El bot de música usa el volumen local guardado; las personas, 100%.
-      volume: meta.bot ? get(prefs).botVolume : 100,
+      volume: meta.bot ? clampVol(get(prefs).botVolume) : 100,
       localMuted: false,
       hidden: !!meta.bot,
       isBot: !!meta.bot,
@@ -115,21 +122,36 @@ function peerFor(participant) {
   return p;
 }
 
+// El volumen va de 0 a 100 (tope duro: >1.0 en un <audio> lanza excepción y el
+// slider "dejaba de funcionar" en silencio).
+function clampVol(v) {
+  return Math.max(0, Math.min(100, Math.round(+v || 0)));
+}
+
 function applyVol(p) {
-  if (!p.audioTrack) return;
   const deaf = get(voiceState).deafened;
-  const v = deaf || p.localMuted ? 0 : p.volume / 100;
-  try {
-    p.audioTrack.setVolume(v);
-  } catch {}
+  const lin = deaf || p.localMuted ? 0 : clampVol(p.volume) / 100;
+  // Curva perceptual (cuadrática): el oído es logarítmico; con volumen lineal
+  // el 50% del slider sonaba casi igual que el 100% y el tramo bajo no hacía
+  // nada. Así el slider "responde" en todo su recorrido.
+  const v = lin * lin;
+  for (const t of [p.audioTrack, p.screenAudio]) {
+    if (!t) continue;
+    try { t.setVolume(v); } catch {}
+  }
 }
 
 function onSubscribed(track, _pub, participant) {
   const p = peerFor(participant);
   if (track.kind === Track.Kind.Audio) {
-    p.audioTrack = track;
-    p.audioEl = track.attach(); // reproduce (vía webAudioMix)
-    ensureAudioBin().appendChild(p.audioEl);
+    // El audio de una pantalla compartida es una pista APARTE del micro; si se
+    // mezclaban, el slider de volumen dejaba de controlar la voz al compartir.
+    const isShareAudio = (_pub?.source || track.source) === Track.Source.ScreenShareAudio;
+    if (isShareAudio) p.screenAudio = track;
+    else p.audioTrack = track;
+    const el = track.attach(); // reproduce en un <audio> oculto
+    if (!isShareAudio) p.audioEl = el;
+    ensureAudioBin().appendChild(el);
     applyVol(p);
   } else if (track.kind === Track.Kind.Video) {
     const isScreen = (_pub?.source || track.source) === Track.Source.ScreenShare;
@@ -149,8 +171,8 @@ function onUnsubscribed(track, _pub, participant) {
   if (!p) return;
   if (track.kind === Track.Kind.Audio) {
     try { track.detach(); } catch {}
-    p.audioTrack = null;
-    p.audioEl = null;
+    if (p.screenAudio === track) p.screenAudio = null;
+    if (p.audioTrack === track) { p.audioTrack = null; p.audioEl = null; }
   } else if (track.kind === Track.Kind.Video) {
     const isScreen = (_pub?.source || track.source) === Track.Source.ScreenShare;
     if (isScreen) {
@@ -163,16 +185,28 @@ function onUnsubscribed(track, _pub, participant) {
   }
 }
 
+// Número de intento de conexión: si el usuario se sale (o entra a otro canal)
+// mientras un join sigue en vuelo, el join viejo se da cuenta y no pisa nada.
+let joinSeq = 0;
+
 export async function joinVoice(channelId) {
-  if (get(voiceState).active) await leaveVoice();
+  if (get(voiceState).active || room) await leaveVoice();
+  const seq = ++joinSeq;
+
+  // Feedback INMEDIATO: la vista de voz muestra "conectando…" desde el clic.
+  // Antes todo (token + conexión + primer arranque del micro) pasaba ANTES de
+  // actualizar la UI y la primera vez tras abrir la app parecía colgada.
+  voiceState.update((s) => ({ ...s, connecting: true, channelId, error: null }));
 
   let token;
   try {
     ({ token } = await api.voiceToken(channelId));
   } catch (e) {
-    voiceState.update((s) => ({ ...s, error: "No se pudo obtener el acceso a la sala." }));
+    if (seq === joinSeq)
+      voiceState.update((s) => ({ ...s, connecting: false, error: "No se pudo obtener el acceso a la sala." }));
     return;
   }
+  if (seq !== joinSeq) return; // el usuario ya se fue a otra cosa
   // Señalización de LiveKit por la base del servidor (mismo origen en web; la
   // URL horneada en la app de escritorio). El proxy (vite/Caddy) la enruta al
   // servidor LiveKit, así una página HTTPS usa wss:// sin "mixed content".
@@ -182,7 +216,6 @@ export async function joinVoice(channelId) {
   room = new Room({
     adaptiveStream: true,
     dynacast: true,
-    webAudioMix: true,
     audioCaptureDefaults: micAudioConstraints(),
   });
 
@@ -211,57 +244,74 @@ export async function joinVoice(channelId) {
     })
     .on(RoomEvent.TrackMuted, (pub, pt) => {
       const p = peers[pt.identity];
-      if (p && pub.kind === Track.Kind.Audio) { p.micMuted = true; publish(); }
+      if (p && pub.source === Track.Source.Microphone) { p.micMuted = true; publish(); }
     })
     .on(RoomEvent.TrackUnmuted, (pub, pt) => {
       const p = peers[pt.identity];
-      if (p && pub.kind === Track.Kind.Audio) { p.micMuted = false; publish(); }
+      if (p && pub.source === Track.Source.Microphone) { p.micMuted = false; publish(); }
     })
     .on(RoomEvent.Disconnected, () => { if (get(voiceState).active) leaveVoice(); });
 
+  const r = room;
   try {
-    await room.connect(url, token);
+    await r.connect(url, token);
   } catch (e) {
-    voiceState.update((s) => ({ ...s, error: "No se pudo conectar a la voz." }));
-    try { room.disconnect(); } catch {}
-    room = null;
+    if (seq === joinSeq) {
+      voiceState.update((s) => ({ ...s, connecting: false, error: "No se pudo conectar a la voz." }));
+      room = null;
+    }
+    try { r.disconnect(); } catch {}
     return;
   }
-  // El micro es opcional: si falla o lo deniegan, entras igual (solo escuchas).
-  let micOk = true;
-  try {
-    await room.localParticipant.setMicrophoneEnabled(true);
-  } catch {
-    micOk = false;
-  }
-  try { await room.startAudio(); } catch {}
-  // Salida de audio elegida (auriculares/altavoz), si la hay.
-  if (pr.outputDeviceId) {
-    try { await room.switchActiveDevice("audiooutput", pr.outputDeviceId); } catch {}
-  }
-  // Participantes ya presentes (sus tracks llegan por TrackSubscribed).
-  room.remoteParticipants.forEach((pt) => peerFor(pt));
+  if (seq !== joinSeq) { try { r.disconnect(); } catch {} return; }
 
+  // Participantes ya presentes (sus tracks llegan por TrackSubscribed).
+  r.remoteParticipants.forEach((pt) => peerFor(pt));
+
+  // Conectado: la UI queda operativa YA. El micro se enciende en segundo plano
+  // (la PRIMERA captura tras abrir la app puede tardar segundos en Windows
+  // mientras arranca el subsistema de audio; no tiene por qué congelar la
+  // entrada a la sala: mientras tanto ya oyes a los demás).
   voiceState.update((s) => ({
     ...s,
     active: true,
+    connecting: false,
     channelId,
-    muted: !micOk,
+    muted: false,
     deafened: false,
     sharing: false,
     cameraOn: false,
     meSpeaking: false,
     peers: {},
-    error: micOk ? null : "Sin micrófono: estás solo escuchando.",
+    error: null,
   }));
   playSound("join"); // sonido al ENTRAR tú a la voz
   publish();
   startLevelMonitor(); // aro verde instantáneo (medición local, no del servidor)
 
-  // Supresión de ruido avanzada (Krisp): se aplica DESPUÉS de mostrar la UI,
-  // pero esperando de verdad a que la pista esté lista, para que quede activa al
-  // entrar (antes a veces "parecía activa" y no lo estaba hasta re-togglearla).
-  if (micOk) await applyKrisp();
+  (async () => {
+    try { await r.startAudio(); } catch {}
+    // Salida de audio elegida (auriculares/altavoz), si la hay.
+    if (pr.outputDeviceId) {
+      try { await r.switchActiveDevice("audiooutput", pr.outputDeviceId); } catch {}
+    }
+    // El micro es opcional: si falla o lo deniegan, entras igual (solo escuchas).
+    let micOk = true;
+    try {
+      await r.localParticipant.setMicrophoneEnabled(true);
+    } catch {
+      micOk = false;
+    }
+    if (seq !== joinSeq) return; // ya salimos de la sala mientras tanto
+    if (!micOk) {
+      voiceState.update((s) => ({ ...s, muted: true, error: "Sin micrófono: estás solo escuchando." }));
+      return;
+    }
+    // Supresión de ruido avanzada: se aplica DESPUÉS de publicar el micro,
+    // esperando de verdad a que la pista esté lista, para que quede activa al
+    // entrar (antes a veces "parecía activa" y no lo estaba hasta re-togglearla).
+    await applyKrisp();
+  })();
 }
 
 // --- Detección LOCAL de quién habla (sin el retardo del servidor) ---
@@ -270,15 +320,15 @@ export async function joinVoice(channelId) {
 // medimos el volumen de cada pista de audio EN el cliente cada 40 ms con un
 // AnalyserNode: se enciende con el primer golpe de sonido, sin lag.
 let lvlCtx = null;   // AudioContext propio del medidor
-let lvlTimer = 0;    // fallback con setInterval si no hay ScriptProcessor
+let lvlTimer = 0;    // setInterval (corre SIEMPRE, por si el pump no dispara)
 let lvlPump = null;  // nodo que dispara el tick desde el hilo de AUDIO (sin
                      // throttling: setInterval se frena a 1/s con la ventana
                      // oculta/minimizada y el aro se congelaría)
 let lvlNodes = new WeakMap(); // MediaStreamTrack -> AnalyserNode
-let lvlLast = {};    // id -> timestamp del último pico (para el "hold")
+let lvlState = {};   // id -> { floor, last } (piso de ruido + último pico de voz)
+let lvlLastTick = 0; // dedupe entre el pump y el setInterval
 
-const SPEAK_RMS = 0.02;      // volumen mínimo (RMS) que cuenta como sonido
-const SPEAK_HOLD_MS = 220;   // el aro se mantiene un instante tras el último pico
+const SPEAK_HOLD_MS = 300;   // el aro se mantiene un instante tras el último pico
 const LVL_TICK_MS = 40;      // 25 mediciones por segundo
 
 function lvlAnalyser(mst) {
@@ -295,17 +345,28 @@ function lvlAnalyser(mst) {
   return an;
 }
 
+// ¿Está hablando `id`? Un umbral FIJO fallaba en ambos sentidos: con ruido de
+// fondo constante (ventilador, estática) el aro se encendía solo, y una voz
+// suave nunca lo alcanzaba ("se ilumina cuando quiere"). Ahora cada persona
+// lleva su PISO de ruido (baja al instante, sube muy despacio) y cuenta como
+// voz lo que sobresale claramente de ese piso, con histéresis para no titilar.
 function lvlSpeaking(id, mst, now, buf) {
+  const st = lvlState[id] || (lvlState[id] = { floor: 0.004, last: 0 });
   if (mst && mst.readyState === "live") {
     const an = lvlAnalyser(mst);
     if (an) {
       an.getFloatTimeDomainData(buf);
       let e = 0;
       for (let i = 0; i < buf.length; i++) e += buf[i] * buf[i];
-      if (Math.sqrt(e / buf.length) >= SPEAK_RMS) lvlLast[id] = now;
+      const rms = Math.sqrt(e / buf.length);
+      st.floor = rms < st.floor ? rms : Math.min(st.floor * 1.002, 0.05);
+      const held = now - st.last < SPEAK_HOLD_MS;
+      // Encender exige sobresalir 3x del piso; mantener, solo 2x (histéresis).
+      const thresh = Math.max(0.01, st.floor * (held ? 2 : 3));
+      if (rms >= thresh) st.last = now;
     }
   }
-  return now - (lvlLast[id] || 0) < SPEAK_HOLD_MS;
+  return now - st.last < SPEAK_HOLD_MS;
 }
 
 function startLevelMonitor() {
@@ -313,16 +374,26 @@ function startLevelMonitor() {
   try {
     lvlCtx = new AudioContext();
     if (lvlCtx.state === "suspended") lvlCtx.resume().catch(() => {});
+    // Si el SO suspende el contexto (cambio de dispositivo…), reanudarlo solo.
+    lvlCtx.onstatechange = () => {
+      if (lvlCtx?.state === "suspended") lvlCtx.resume().catch(() => {});
+    };
   } catch { return; }
   const buf = new Float32Array(512);
   const tick = () => {
     if (!room) return;
     const now = performance.now();
+    if (now - lvlLastTick < LVL_TICK_MS - 8) return; // ya midió el otro reloj
+    lvlLastTick = now;
     let changed = false;
 
-    // Yo: se mide la pista del micro PUBLICADA (si está muteada no cuenta).
+    // Yo: se mide la pista del micro que se PUBLICA de verdad — la procesada
+    // por la supresión de ruido si está activa. Antes se medía la cruda y el
+    // aro se encendía con ruido que los demás ni oían.
     const meTrack = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
-    const meMst = meTrack && !meTrack.isMuted ? meTrack.mediaStreamTrack : null;
+    const meMst = meTrack && !meTrack.isMuted
+      ? (krispProcessor?.processedTrack || meTrack.mediaStreamTrack)
+      : null;
     const meSp = lvlSpeaking("me", meMst, now, buf);
     if (meSp !== get(voiceState).meSpeaking) {
       voiceState.update((s) => ({ ...s, meSpeaking: meSp }));
@@ -337,9 +408,9 @@ function startLevelMonitor() {
     if (changed) publish();
   };
 
-  // Reloj en el hilo de audio: un ScriptProcessor de 2048 muestras dispara
-  // cada ~43 ms a 48 kHz pase lo que pase con la ventana. Si no existiera,
-  // caemos a setInterval (con ventana visible funciona igual de bien).
+  // Dos relojes a la vez (con dedupe): el ScriptProcessor dispara desde el
+  // hilo de audio aunque la ventana esté oculta/minimizada, y el setInterval
+  // cubre el caso de que el contexto de audio no arranque o se pause.
   if (lvlCtx.createScriptProcessor) {
     lvlPump = lvlCtx.createScriptProcessor(2048, 1, 1);
     lvlPump.onaudioprocess = tick;
@@ -347,9 +418,8 @@ function startLevelMonitor() {
     mute.gain.value = 0; // el pump no debe sonar: solo marca el ritmo
     lvlPump.connect(mute);
     mute.connect(lvlCtx.destination);
-  } else {
-    lvlTimer = setInterval(tick, LVL_TICK_MS);
   }
+  lvlTimer = setInterval(tick, LVL_TICK_MS);
 }
 
 function stopLevelMonitor() {
@@ -359,13 +429,16 @@ function stopLevelMonitor() {
     try { lvlPump.onaudioprocess = null; lvlPump.disconnect(); } catch {}
     lvlPump = null;
   }
-  lvlLast = {};
+  lvlState = {};
+  lvlLastTick = 0;
   lvlNodes = new WeakMap();
+  if (lvlCtx) { try { lvlCtx.onstatechange = null; } catch {} }
   try { lvlCtx?.close(); } catch {}
   lvlCtx = null;
 }
 
 export async function leaveVoice() {
+  joinSeq++; // cancela cualquier join que siga en vuelo
   if (get(voiceState).active) playSound("leave"); // sonido al SALIR tú de la voz
   stopLevelMonitor();
   if (room) {
@@ -380,6 +453,7 @@ export async function leaveVoice() {
   if (audioBin) { audioBin.remove(); audioBin = null; }
   voiceState.set({
     active: false,
+    connecting: false,
     channelId: null,
     muted: false,
     deafened: false,
@@ -430,7 +504,7 @@ export async function toggleDeafen() {
 export function setPeerVolume(id, vol) {
   const p = peers[id];
   if (!p) return;
-  p.volume = Math.max(0, Math.min(200, Math.round(vol)));
+  p.volume = clampVol(vol);
   applyVol(p);
   publish();
 }
@@ -580,7 +654,7 @@ export function localCameraStream() {
 
 // --- Volumen del bot de música (local, por persona) ---
 export function setBotVolume(vol) {
-  const v = Math.max(0, Math.min(200, Math.round(vol)));
+  const v = clampVol(vol);
   setPref("botVolume", v);
   for (const p of Object.values(peers)) {
     if (p.isBot) {
@@ -679,11 +753,11 @@ async function applyKrisp() {
 
   if (!get(prefs).krisp) return false; // supresión apagada: micro limpio.
 
-  // 2) Crear uno nuevo y aplicarlo.
+  // 2) Crear uno nuevo y aplicarlo (con el nivel de puerta de ruido elegido).
   try {
     krispSupported = isNoiseSupported();
     if (!krispSupported) return false;
-    const proc = createNoiseProcessor();
+    const proc = createNoiseProcessor(get(prefs).noiseGate);
     await track.setProcessor(proc);
     krispProcessor = proc;
     return true;
@@ -701,4 +775,12 @@ export async function setKrisp(on) {
   setPref("krisp", on);
   if (!room) return;
   await applyKrisp(); // aplica/quita el filtro en vivo, sin re-capturar el micro
+}
+
+// Cambia la intensidad de la puerta de ruido (off/suave/medio/fuerte) en vivo.
+// Recrea el procesador porque el nivel se fija al construir la cadena de audio.
+export async function setNoiseGate(level) {
+  setPref("noiseGate", level);
+  if (!room) return;
+  if (get(prefs).krisp) await applyKrisp();
 }

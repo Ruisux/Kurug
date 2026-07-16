@@ -41,7 +41,7 @@
 
     <div class="vol">
       <div class="vlabel"><span>Volumen</span><span class="vval">{peer.volume}%</span></div>
-      <input type="range" min="0" max="200" step="1" value={peer.volume} on:input={onVol} />
+      <input type="range" min="0" max="100" step="1" value={peer.volume} on:input={onVol} />
     </div>
   {:else}
     <div class="empty">No está en la voz</div>

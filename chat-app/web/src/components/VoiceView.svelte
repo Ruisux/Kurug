@@ -62,7 +62,11 @@
     <button class="back" on:click={onBack} aria-label="Volver"><i class="ti ti-chevron-left"></i></button>
     <span class="mk"><i class="ti ti-volume"></i></span>
     <span class="display title">{channelName}</span>
-    <span class="count">{people.length} en la sala</span>
+    {#if st.connecting}
+      <span class="count connecting"><i class="ti ti-loader-2 spin"></i> Conectando…</span>
+    {:else}
+      <span class="count">{people.length} en la sala</span>
+    {/if}
   </header>
 
   <div class="stage">
@@ -141,7 +145,10 @@
   }
   .mk { color: var(--shu); font-size: 18px; display: flex; }
   .title { font-size: 16px; }
-  .count { margin-left: auto; font-size: 12px; color: var(--mut); }
+  .count { margin-left: auto; font-size: 12px; color: var(--mut); display: flex; align-items: center; gap: 6px; }
+  .count.connecting { color: var(--shu); }
+  .spin { animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .stage { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
   .err {
     background: rgba(var(--shu-rgb), 0.14);

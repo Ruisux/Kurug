@@ -47,7 +47,7 @@
 
     <div class="vol" title="Tu volumen de la música ({$prefs.botVolume}%)">
       <i class="ti {$prefs.botVolume === 0 ? 'ti-volume-3' : 'ti-volume'}"></i>
-      <input type="range" min="0" max="200" step="1" value={$prefs.botVolume}
+      <input type="range" min="0" max="100" step="1" value={$prefs.botVolume}
         on:input={(e) => setBotVolume(+e.target.value)} aria-label="Volumen de la música" />
     </div>
 

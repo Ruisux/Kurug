@@ -2,8 +2,16 @@
   import { onMount, onDestroy } from "svelte";
   import { prefs, setPref } from "../lib/prefs.js";
   import {
-    listAudioDevices, setInputDevice, setOutputDevice, refreshMicConstraints, setKrisp,
+    listAudioDevices, setInputDevice, setOutputDevice, refreshMicConstraints, setKrisp, setNoiseGate,
   } from "../lib/voice.js";
+
+  // Niveles de la puerta de ruido (corta respiros/teclado en los silencios).
+  const GATE_LEVELS = [
+    { id: "off", label: "Off" },
+    { id: "suave", label: "Suave" },
+    { id: "medio", label: "Medio" },
+    { id: "fuerte", label: "Fuerte" },
+  ];
   import { playSound } from "../lib/sounds.js";
   import { applyShortcuts, codeCombo, prettyCombo } from "../lib/shortcuts.js";
 
@@ -264,8 +272,21 @@
       <label class="switch">
         <input type="checkbox" checked={$prefs.krisp} on:change={(e) => setKrisp(e.target.checked)} />
         <span class="track"><span class="thumb"></span></span>
-        <span class="sw-txt">Supresión de ruido (RNNoise)<small>quita teclado, ventilador y ruido de fondo — corre en tu equipo, como el Discord clásico</small></span>
+        <span class="sw-txt">Supresión de ruido (RNNoise)<small>quita ventilador y ruido de fondo — corre en tu equipo, como el Discord clásico</small></span>
       </label>
+      {#if $prefs.krisp}
+        <div class="gate">
+          <div class="gate-h">
+            <span>Puerta de ruido<small>silencia respiros, teclado y fondo cuando no hablas</small></span>
+          </div>
+          <div class="seg" role="group" aria-label="Intensidad de la puerta de ruido">
+            {#each GATE_LEVELS as g (g.id)}
+              <button class="seg-btn" class:on={($prefs.noiseGate || "medio") === g.id}
+                on:click={() => setNoiseGate(g.id)}>{g.label}</button>
+            {/each}
+          </div>
+        </div>
+      {/if}
       <label class="switch">
         <input type="checkbox" checked={$prefs.echoCancellation} on:change={(e) => onToggleConstraint("echoCancellation", e.target.checked)} />
         <span class="track"><span class="thumb"></span></span>
@@ -456,6 +477,50 @@
   .sw-txt small {
     color: var(--fnt);
     font-size: 11.5px;
+  }
+  /* Puerta de ruido: etiqueta + selector segmentado */
+  .gate {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px 0 2px 49px; /* alineado bajo el texto del switch de arriba */
+  }
+  .gate-h span {
+    display: flex;
+    flex-direction: column;
+    font-size: 13px;
+    color: var(--tx);
+    line-height: 1.35;
+  }
+  .gate-h small {
+    color: var(--fnt);
+    font-size: 11.5px;
+  }
+  .seg {
+    display: flex;
+    gap: 4px;
+    background: var(--field);
+    border: 1px solid var(--bd2);
+    border-radius: 9px;
+    padding: 3px;
+  }
+  .seg-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--mut);
+    font-size: 12.5px;
+    padding: 6px 0;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .seg-btn:hover {
+    color: var(--tx);
+  }
+  .seg-btn.on {
+    background: rgba(var(--shu-rgb), 0.16);
+    color: var(--shu);
+    font-weight: 500;
   }
   select {
     width: 100%;

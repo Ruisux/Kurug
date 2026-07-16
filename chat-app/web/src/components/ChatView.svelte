@@ -228,6 +228,11 @@
   let mediaPos = { left: 0, bottom: 0 }; // posición fija calculada al abrir
   let pinsOpen = false;
 
+  function closeMedia() {
+    gifOpen = false;
+    focusComposer(); // que Enter siga enviando sin re-clicar el input
+  }
+
   function toggleMedia() {
     gifOpen = !gifOpen;
     if (gifOpen && mediaBtn) {
@@ -295,10 +300,21 @@
     }
   }
 
+  // Devuelve el foco al compositor (tras elegir emoji/GIF, cerrar el panel…):
+  // sin esto había que volver a hacer clic en el input para poder dar Enter.
+  async function focusComposer(caret = null) {
+    await tick();
+    const el = composerInput;
+    if (!el) return;
+    el.focus();
+    if (caret != null) el.selectionStart = el.selectionEnd = caret;
+  }
+
   function pickGif(url) {
     pendingImage = url;
     pendingFile = null;
     gifOpen = false;
+    focusComposer(); // listo para dar Enter y enviar
   }
 
   // Inserta un emoji en la posición del cursor (sin cerrar el panel).
@@ -307,12 +323,10 @@
     if (el && el.selectionStart != null) {
       const s = el.selectionStart, en = el.selectionEnd;
       draft = draft.slice(0, s) + e + draft.slice(en);
-      tick().then(() => {
-        el.focus();
-        el.selectionStart = el.selectionEnd = s + e.length;
-      });
+      focusComposer(s + e.length);
     } else {
       draft += e;
+      focusComposer();
     }
   }
 
@@ -357,7 +371,31 @@
     await tick();
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }
-  $: messages, header, scrollToBottom();
+
+  // Autoscroll SOLO cuando toca: al cambiar de canal/DM o cuando llega un
+  // mensaje NUEVO estando ya abajo (o siendo mío). Antes cualquier cambio en
+  // la lista (una reacción, una edición, un pin) te arrastraba al final aunque
+  // estuvieras leyendo mensajes viejos arriba.
+  let scrollKey = null;   // identifica el canal/DM actual
+  let lastMsgId = null;   // último mensaje visto (para detectar los nuevos)
+  function nearBottom() {
+    return !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 140;
+  }
+  function autoScroll(msgs, hdr, chId, dmId) {
+    const key = `${hdr.kind}:${chId ?? ""}:${dmId ?? ""}`;
+    const last = msgs.length ? msgs[msgs.length - 1].id : null;
+    if (key !== scrollKey) {
+      scrollKey = key;
+      lastMsgId = last;
+      scrollToBottom();
+      return;
+    }
+    if (last === lastMsgId) return; // reacción/edición/pin: no tocar el scroll
+    const stick = nearBottom() || !!msgs[msgs.length - 1]?.mine; // decidir ANTES de que crezca el DOM
+    lastMsgId = last;
+    if (stick) scrollToBottom();
+  }
+  $: autoScroll(messages, header, channelId, dmUserId);
 
   $: active = header.kind !== "none";
   $: placeholder =
@@ -618,7 +656,7 @@
   {/if}
 
   {#if gifOpen}
-    <button class="picker-backdrop" on:click={() => (gifOpen = false)} aria-label="cerrar"></button>
+    <button class="picker-backdrop" on:click={closeMedia} aria-label="cerrar"></button>
     <div class="media-float" style="left:{mediaPos.left}px; bottom:{mediaPos.bottom}px">
       <div class="media-tabs">
         <button class:active={pickerTab === "emoji"} on:click={() => (pickerTab = "emoji")}>
@@ -629,9 +667,9 @@
         </button>
       </div>
       {#if pickerTab === "emoji"}
-        <EmojiPicker onPick={insertEmoji} onClose={() => (gifOpen = false)} />
+        <EmojiPicker onPick={insertEmoji} onClose={closeMedia} />
       {:else}
-        <GifPicker onPick={pickGif} onClose={() => (gifOpen = false)} />
+        <GifPicker onPick={pickGif} onClose={closeMedia} />
       {/if}
     </div>
   {/if}

@@ -11,9 +11,10 @@ const defaults = {
   echoCancellation: true,
   autoGainControl: true,
   krisp: true,              // supresión de ruido (RNNoise local; la clave se llama "krisp" por herencia)
+  noiseGate: "medio",       // puerta de ruido tras RNNoise: off | suave | medio | fuerte
   soundsEnabled: true,      // efectos de UI (mute, entrar, salir…)
   notificationSound: true,  // sonido al recibir mensajes/menciones
-  botVolume: 100,           // volumen local de la música (0-200)
+  botVolume: 100,           // volumen local de la música (0-100)
   screenQuality: "equilibrado", // preset de calidad al compartir pantalla
   // Atajos de teclado (formato por `code`, p. ej. "ControlLeft+ShiftLeft+KeyM").
   // Permite combos solo de modificadores (Alt+Ctrl izq) y distingue izq/der.
@@ -45,6 +46,8 @@ function load() {
     const saved = { ...defaults, ...(JSON.parse(localStorage.getItem(KEY)) || {}) };
     saved.muteShortcut = migrateShortcut(saved.muteShortcut);
     saved.deafenShortcut = migrateShortcut(saved.deafenShortcut);
+    // El volumen iba de 0 a 200; ahora el tope es 100 (migra valores guardados).
+    saved.botVolume = Math.max(0, Math.min(100, Math.round(+saved.botVolume) || 0));
     return saved;
   } catch {
     return { ...defaults };

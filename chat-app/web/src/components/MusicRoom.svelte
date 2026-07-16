@@ -89,7 +89,7 @@
     <!-- Volumen LOCAL de la música (cada quien el suyo). -->
     <div class="volrow" title="Tu volumen de la música (solo para ti)">
       <i class="ti {$prefs.botVolume === 0 ? 'ti-volume-3' : 'ti-volume'}"></i>
-      <input type="range" min="0" max="200" step="1" value={$prefs.botVolume}
+      <input type="range" min="0" max="100" step="1" value={$prefs.botVolume}
         on:input={(e) => setBotVolume(+e.target.value)} aria-label="Volumen de la música" />
       <span class="vval">{$prefs.botVolume}%</span>
     </div>
