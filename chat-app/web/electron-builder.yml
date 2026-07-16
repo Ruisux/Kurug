@@ -21,10 +21,15 @@ publish:
 win:
   target: nsis
   icon: electron/icons/icon.ico
+# oneClick = instalador de UN paso, el ÚNICO que soporta bien la instalación
+# silenciosa del auto-update. Con el asistido (oneClick: false) la app se
+# cerraba, el instalador no alcanzaba a reemplazar el .exe en uso y se relanzaba
+# la versión VIEJA: "se reinicia y no actualiza". perMachine: false instala en
+# %LOCALAPPDATA%\Programs (por usuario), así no pide permisos de administrador.
+# No usar allowToChangeInstallationDirectory: es incompatible con oneClick.
 nsis:
-  oneClick: false
+  oneClick: true
   perMachine: false
-  allowToChangeInstallationDirectory: true
 
 mac:
   target: dmg

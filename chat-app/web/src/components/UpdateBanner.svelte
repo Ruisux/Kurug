@@ -20,10 +20,10 @@
     <i class="ti ti-rocket"></i>
     <div class="txt">
       <b>Actualización disponible</b>
-      <span>v{st.version} lista para instalar</span>
+      <span>v{st.version}</span>
     </div>
     {#if st.installing}
-      <span class="pct">Instalando… la app se reinicia sola</span>
+      <span class="pct">Actualizando…</span>
     {:else if st.downloading}
       <div class="prog"><div class="bar" style="width:{Math.round(st.progress * 100)}%"></div></div>
       <span class="pct">{Math.round(st.progress * 100)}%</span>
@@ -31,7 +31,7 @@
       <span class="err" title={st.error}>No se pudo: {st.error.slice(0, 80)}</span>
       <button class="go" on:click={installUpdate}>Reintentar</button>
     {:else}
-      <button class="go" on:click={installUpdate}>Actualizar y reiniciar</button>
+      <button class="go" on:click={installUpdate}>Actualizar</button>
       <button class="later" on:click={() => (dismissed = true)} title="Ahora no" aria-label="Ahora no"><i class="ti ti-x"></i></button>
     {/if}
   </div>

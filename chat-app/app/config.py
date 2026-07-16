@@ -21,7 +21,13 @@ class Settings(BaseSettings):
     # Obligatoria: sin default. Genera una con:
     #   python3 -c "import secrets; print(secrets.token_hex(32))"
     secret_key: str
-    access_token_expire_minutes: int = 60 * 24  # 1 día
+    # Sesión larga a propósito: es un chat privado entre conocidos y la gracia es
+    # NO tener que iniciar sesión cada vez que se reinicia el PC. Con 1 día, el
+    # token vencía de un día para otro y la app pedía login otra vez. El cliente
+    # guarda el token en localStorage, así que con esto la sesión sobrevive a
+    # apagar y prender. OJO: un JWT no se puede revocar antes de que expire; si
+    # alguna vez hace falta echar a alguien, cambiar SECRET_KEY invalida TODOS.
+    access_token_expire_minutes: int = 60 * 24 * 365  # 1 año
     database_url: str = "sqlite:///./chat.db"
     # Usuario reservado para el bot de música (se une a la voz a reproducir).
     bot_username: str = "kurug-bot"

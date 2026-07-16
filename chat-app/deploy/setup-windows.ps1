@@ -31,7 +31,8 @@ if (-not (Test-Path ".env")) {
   @"
 SECRET_KEY=$SECRET
 DATABASE_URL=sqlite:///./chat.db
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
+# 525600 min = 1 ano: se inicia sesion una vez, no en cada reinicio del PC.
+ACCESS_TOKEN_EXPIRE_MINUTES=525600
 MAX_UPLOAD_MB=2048
 
 # Rellena estos a mano:

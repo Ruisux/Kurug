@@ -2,13 +2,16 @@
 #
 # Hace, en orden:
 #   1. git pull (trae lo que subiste desde el Mac)
-#   2. recompila el frontend que sirve Caddy (web/dist)
-#   3. actualiza dependencias del backend (si cambiaron)
-#   4. aplica migraciones de la base de datos (alembic)
-#   5. reinicia backend + bot (si estan como servicios NSSM)
+#   2. amplia la sesion en .env si aun tiene el valor viejo (1 dia -> 1 ano)
+#   3. recompila el frontend que sirve Caddy (web/dist)
+#   4. actualiza dependencias del backend (si cambiaron)
+#   5. aplica migraciones de la base de datos (alembic)
+#   6. reinicia backend + bot (si estan como servicios NSSM)
 #
 # Uso:  desde PowerShell ->  .\deploy\update-kurug.ps1
-# Los secretos (.env, livekit.yaml, start-kurug.bat) NO se tocan: son locales.
+# Los SECRETOS (livekit.yaml, start-kurug.bat, y las claves del .env) NO se
+# tocan: son locales. Del .env solo se migra ACCESS_TOKEN_EXPIRE_MINUTES, que
+# no es un secreto, y unicamente si sigue con el default viejo.
 
 $ErrorActionPreference = "Stop"
 
@@ -24,7 +27,7 @@ Write-Host "Repo:    $repoRoot"
 Write-Host "chatApp: $chatApp"
 
 # 1) Traer cambios ---------------------------------------------------------
-Step "1/5  git pull"
+Step "1/6  git pull"
 Push-Location $repoRoot
 try {
     git fetch --all --prune
@@ -35,28 +38,49 @@ try {
     }
 } finally { Pop-Location }
 
-# 2) Frontend --------------------------------------------------------------
-Step "2/5  Recompilar frontend (web/dist)"
+# 2) Sesion larga ----------------------------------------------------------
+# El .env manda sobre el default del codigo, asi que el valor viejo (1440 = 1
+# dia) haria que la app pidiera login cada vez que se reinicia el PC. Solo se
+# cambia si sigue EXACTAMENTE con ese default; si pusiste otro valor a mano, se
+# respeta.
+Step "2/6  Sesion larga (.env)"
+$envFile = Join-Path $chatApp ".env"
+$oldExpiry = '(?m)^\s*ACCESS_TOKEN_EXPIRE_MINUTES\s*=\s*1440\s*$'
+if (Test-Path $envFile) {
+    $envTxt = Get-Content $envFile -Raw
+    if ($envTxt -match $oldExpiry) {
+        ($envTxt -replace $oldExpiry, 'ACCESS_TOKEN_EXPIRE_MINUTES=525600') |
+            Set-Content -Path $envFile -Encoding UTF8 -NoNewline
+        Write-Host "  Sesion ampliada de 1 dia a 1 ano: ya no pedira login al reiniciar el PC." -ForegroundColor Green
+    } else {
+        Write-Host "  Sin cambios (el .env ya no tiene el valor viejo 1440)." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  No encuentro .env; me lo salto." -ForegroundColor Yellow
+}
+
+# 3) Frontend --------------------------------------------------------------
+Step "3/6  Recompilar frontend (web/dist)"
 Push-Location (Join-Path $chatApp "web")
 try {
     npm ci
     npm run build          # el frontend del server usa mismo origen; no necesita VITE_KURUG_SERVER
 } finally { Pop-Location }
 
-# 3) Dependencias del backend ---------------------------------------------
-Step "3/5  Dependencias del backend (pip)"
+# 4) Dependencias del backend ---------------------------------------------
+Step "4/6  Dependencias del backend (pip)"
 if (-not (Test-Path $venvPy)) { throw "No encuentro el venv del backend en $venvPy" }
 & $venvPy -m pip install -r (Join-Path $chatApp "requirements.txt")
 
-# 4) Migraciones de BD -----------------------------------------------------
-Step "4/5  Migraciones de base de datos (alembic)"
+# 5) Migraciones de BD -----------------------------------------------------
+Step "5/6  Migraciones de base de datos (alembic)"
 Push-Location $chatApp
 try {
     & $venvPy -m alembic upgrade head
 } finally { Pop-Location }
 
-# 5) Reiniciar servicios ---------------------------------------------------
-Step "5/5  Reiniciar backend + bot"
+# 6) Reiniciar servicios ---------------------------------------------------
+Step "6/6  Reiniciar backend + bot"
 $services = @("kurug-backend", "kurug-bot")
 $anyService = $false
 foreach ($s in $services) {
