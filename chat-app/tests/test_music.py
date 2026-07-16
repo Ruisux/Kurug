@@ -120,3 +120,37 @@ def test_music_bot_requires_bot_token(client):
     with pytest.raises(Exception):
         with client.websocket_connect(f"/ws/music-bot/{cid}?token={tok}") as ws:
             ws.receive_json()
+
+
+def test_music_follows_requesters_voice_channel(client, monkeypatch):
+    """La música debe sonar en el canal de VOZ de quien pide la canción.
+
+    Regresión v0.3.9: presence.voice pasó de guardar un int (channel_id) a un
+    dict {"cid", "muted", "deafened"} y music.add() le pasaba el dict entero al
+    bot -> sala "channel-{'cid': 4,...}" inexistente -> sonaba pero no se oía.
+    """
+    import asyncio
+    from app.music import music
+    from app.presence import presence
+
+    monkeypatch.setattr("app.routers.music.resolve", fake_resolve)
+    tok = reg(client, "carla")
+    headers = {"Authorization": f"Bearer {tok}"}
+    cid = music_channel_id(client, headers)
+    me = client.get("/users/me", headers=headers).json()
+
+    # carla está en la voz del canal 99 (formato dict actual de presence.voice)
+    presence.voice[me["id"]] = {"cid": 99, "muted": False, "deafened": False}
+    try:
+        bot_tok = create_access_token(settings.bot_username)
+        with client.websocket_connect(f"/ws/music-bot/{cid}?token={bot_tok}") as bot:
+            with client.websocket_connect(f"/ws/music/{cid}?token={tok}") as ui:
+                ui.receive_json()  # estado inicial
+                ui.send_json({"type": "add", "query": "lofi"})
+                # la sala destino que viaja al bot debe ser el ID (int), no el dict
+                room_msg = bot.receive_json()
+                assert room_msg["type"] == "room"
+                assert room_msg["voice_cid"] == 99
+                assert music.rooms[cid].voice_cid == 99
+    finally:
+        presence.voice.pop(me["id"], None)

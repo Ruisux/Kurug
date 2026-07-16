@@ -84,7 +84,10 @@ class MusicManager:
         room = self.rooms[channel_id]
         # La música suena en el canal de VOZ de quien pide la canción. Si no está
         # en ninguna voz, se mantiene el destino anterior (si lo hay).
-        target = presence.voice.get(user.id)
+        # presence.voice guarda un dict {"cid", "muted", "deafened"} desde que
+        # la presencia lleva el estado del micro; aquí solo interesa el canal.
+        v = presence.voice.get(user.id)
+        target = v["cid"] if v else None
         if target is not None:
             room.voice_cid = target
         for t in tracks:
