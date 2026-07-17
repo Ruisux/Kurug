@@ -17,21 +17,30 @@ from .config import settings
 log = logging.getLogger("kurug.mailer")
 
 
-def _build(to: str, code: str) -> EmailMessage:
+# Textos según para qué es el código: verificar la cuenta o restablecer la
+# contraseña. El código y el mecanismo son los mismos; solo cambia el mensaje.
+_KINDS = {
+    "verify": ("Tu código de verificación de {app}", "Tu código de verificación es:"),
+    "reset": ("Restablecer tu contraseña de {app}", "Tu código para restablecer la contraseña es:"),
+}
+
+
+def _build(to: str, code: str, kind: str) -> EmailMessage:
+    subject, intro = _KINDS[kind]
     msg = EmailMessage()
-    msg["Subject"] = f"Tu código de verificación de {settings.smtp_from_name}"
+    msg["Subject"] = subject.format(app=settings.smtp_from_name)
     msg["From"] = f"{settings.smtp_from_name} <{settings.smtp_user}>"
     msg["To"] = to
     ttl = settings.verification_ttl_min
     msg.set_content(
-        f"Tu código de verificación es: {code}\n\n"
+        f"{intro} {code}\n\n"
         f"Caduca en {ttl} minutos. Si no fuiste tú, ignora este correo."
     )
     msg.add_alternative(
         f"""\
 <div style="font-family:system-ui,sans-serif;max-width:420px;margin:auto">
   <h2 style="color:#d97a4a">{settings.smtp_from_name}</h2>
-  <p>Tu código de verificación es:</p>
+  <p>{intro}</p>
   <p style="font-size:30px;font-weight:700;letter-spacing:6px;color:#d97a4a">{code}</p>
   <p style="color:#666">Caduca en {ttl} minutos. Si no fuiste tú, ignora este correo.</p>
 </div>""",
@@ -40,16 +49,16 @@ def _build(to: str, code: str) -> EmailMessage:
     return msg
 
 
-def send_code(to: str, code: str) -> bool:
+def send_code(to: str, code: str, kind: str = "verify") -> bool:
     """Envía el código a `to`. True si se envió por SMTP; False si no hay SMTP."""
     if not settings.smtp_configured:
-        log.warning("SMTP no configurado. Código de verificación para %s: %s", to, code)
+        log.warning("SMTP no configurado. Código (%s) para %s: %s", kind, to, code)
         return False
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as s:
             s.starttls()
             s.login(settings.smtp_user, settings.smtp_password)
-            s.send_message(_build(to, code))
+            s.send_message(_build(to, code, kind))
         return True
     except Exception as e:  # no filtrar detalles del SMTP al cliente
         log.error("Fallo enviando correo a %s: %r", to, e)

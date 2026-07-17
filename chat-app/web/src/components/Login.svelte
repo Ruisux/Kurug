@@ -3,8 +3,9 @@
   import { api, ApiError } from "../lib/api.js";
   import Katana from "./Katana.svelte";
   import ThemeToggle from "./ThemeToggle.svelte";
+  import PasswordInput from "./PasswordInput.svelte";
 
-  let mode = "login"; // "login" | "register" | "verify"
+  let mode = "login"; // "login" | "register" | "verify" | "forgot" | "reset"
   let error = "";
   let info = "";
   let busy = false;
@@ -99,10 +100,56 @@
     }
   }
 
-  function go(m) { mode = m; error = ""; info = ""; }
+  // --- Recuperar contraseña ---
+  $: resetValid = code.trim().length >= 4 && pwLongEnough && pwHasMix && pwMatch;
+
+  async function doForgot() {
+    error = "";
+    if (!EMAIL_RE.test(pendingEmail.trim())) { error = "Introduce un correo válido."; return; }
+    busy = true;
+    try {
+      await api.forgotPassword(pendingEmail.trim());
+      pendingEmail = pendingEmail.trim();
+      code = ""; password = ""; confirm = "";
+      mode = "reset";
+      info = `Si la cuenta existe, enviamos un código a ${pendingEmail}.`;
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : "No se pudo conectar con el servidor.";
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function doReset() {
+    error = "";
+    if (!resetValid) { error = "Revisa el código y la contraseña nueva."; return; }
+    busy = true;
+    try {
+      const { access_token } = await api.resetPassword(pendingEmail, code.trim(), password);
+      token.set(access_token); // contraseña cambiada: entra directo
+      me.set(await api.me());
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : "No se pudo conectar con el servidor.";
+    } finally {
+      busy = false;
+    }
+  }
+
+  function goForgot() {
+    // Si escribió su correo en el login, lo aprovechamos.
+    pendingEmail = ident.includes("@") ? ident.trim() : "";
+    go("forgot");
+  }
+
+  function go(m) {
+    mode = m; error = ""; info = "";
+    password = ""; confirm = ""; code = ""; // no arrastrar contraseñas entre pantallas
+  }
   function onSubmit() {
     if (mode === "login") doLogin();
     else if (mode === "register") doRegister();
+    else if (mode === "forgot") doForgot();
+    else if (mode === "reset") doReset();
     else doVerify();
   }
 </script>
@@ -122,7 +169,8 @@
     {#if mode === "login"}
       <div class="fields">
         <input placeholder="usuario o correo" autocomplete="username" bind:value={ident} />
-        <input type="password" placeholder="contraseña" autocomplete="current-password" bind:value={password} />
+        <PasswordInput bind:value={password} placeholder="contraseña" autocomplete="current-password" />
+        <button type="button" class="link" on:click={goForgot}>¿Olvidaste tu contraseña?</button>
       </div>
 
     {:else if mode === "register"}
@@ -136,15 +184,39 @@
         {#if username && !USER_RE.test(username)}
           <small class="hint bad-t">3-20 caracteres: letras, números y _</small>
         {/if}
-        <input type="password" placeholder="contraseña" autocomplete="new-password" bind:value={password} />
-        <input
-          class:bad={confirm && !pwMatch}
-          type="password" placeholder="confirmar contraseña" autocomplete="new-password" bind:value={confirm} />
+        <PasswordInput bind:value={password} placeholder="contraseña" autocomplete="new-password" />
+        <PasswordInput
+          bind:value={confirm} bad={!!confirm && !pwMatch}
+          placeholder="confirmar contraseña" autocomplete="new-password" />
         <div class="reqs">
           <span class:ok={pwLongEnough}><i class="ti {pwLongEnough ? 'ti-check' : 'ti-point'}"></i> 8+ caracteres</span>
           <span class:ok={pwHasMix}><i class="ti {pwHasMix ? 'ti-check' : 'ti-point'}"></i> letras y números</span>
           <span class:ok={pwMatch}><i class="ti {pwMatch ? 'ti-check' : 'ti-point'}"></i> coinciden</span>
         </div>
+      </div>
+
+    {:else if mode === "forgot"}
+      <div class="fields">
+        <p class="verify-info">Escribe tu correo y te enviamos un código para crear una contraseña nueva.</p>
+        <input type="email" placeholder="correo electrónico" autocomplete="email" bind:value={pendingEmail} />
+      </div>
+
+    {:else if mode === "reset"}
+      <div class="fields">
+        <p class="verify-info">Revisa <b>{pendingEmail}</b>, introduce el código y tu contraseña nueva.</p>
+        <input
+          class="code" placeholder="------" inputmode="numeric" maxlength="6"
+          autocomplete="one-time-code" bind:value={code} />
+        <PasswordInput bind:value={password} placeholder="contraseña nueva" autocomplete="new-password" />
+        <PasswordInput
+          bind:value={confirm} bad={!!confirm && !pwMatch}
+          placeholder="confirmar contraseña" autocomplete="new-password" />
+        <div class="reqs">
+          <span class:ok={pwLongEnough}><i class="ti {pwLongEnough ? 'ti-check' : 'ti-point'}"></i> 8+ caracteres</span>
+          <span class:ok={pwHasMix}><i class="ti {pwHasMix ? 'ti-check' : 'ti-point'}"></i> letras y números</span>
+          <span class:ok={pwMatch}><i class="ti {pwMatch ? 'ti-check' : 'ti-point'}"></i> coinciden</span>
+        </div>
+        <button type="button" class="link" on:click={doForgot}>Reenviar código</button>
       </div>
 
     {:else}
@@ -160,8 +232,15 @@
     {#if error}<p class="error">{error}</p>{/if}
     {#if info}<p class="info">{info}</p>{/if}
 
-    <button class="primary" type="submit" disabled={busy || (mode === "register" && !registerValid)}>
-      {busy ? "…" : mode === "login" ? "Entrar" : mode === "register" ? "Crear cuenta" : "Verificar"}
+    <button
+      class="primary" type="submit"
+      disabled={busy || (mode === "register" && !registerValid) || (mode === "reset" && !resetValid)}>
+      {busy ? "…"
+        : mode === "login" ? "Entrar"
+        : mode === "register" ? "Crear cuenta"
+        : mode === "forgot" ? "Enviar código"
+        : mode === "reset" ? "Cambiar contraseña"
+        : "Verificar"}
     </button>
 
     <p class="switch">

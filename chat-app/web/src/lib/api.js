@@ -29,6 +29,10 @@ async function req(method, path, { json, body } = {}) {
     } catch {
       detail = r.statusText;
     }
+    // Un 422 de validación trae una LISTA de errores, no un texto: sacarle el
+    // mensaje al primero (antes se mostraba "[object Object]").
+    if (Array.isArray(detail)) detail = detail[0]?.msg || "Datos no válidos.";
+    else if (detail && typeof detail !== "string") detail = "Datos no válidos.";
     throw new ApiError(r.status, detail || "Error");
   }
   if (r.status === 204) return null;
@@ -43,6 +47,10 @@ export const api = {
     req("POST", "/auth/verify", { json: { email, code } }),
   resendCode: (email) =>
     req("POST", "/auth/resend", { json: { email } }),
+  forgotPassword: (email) =>
+    req("POST", "/auth/forgot", { json: { email } }),
+  resetPassword: (email, code, password) =>
+    req("POST", "/auth/reset", { json: { email, code, password } }),
 
   async login(identifier, password) {
     // OAuth2 espera form-urlencoded; "username" admite usuario O correo.

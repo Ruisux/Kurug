@@ -56,6 +56,22 @@ class ResendIn(BaseModel):
     email: EmailStr
 
 
+class ForgotIn(BaseModel):
+    email: EmailStr
+
+
+class ResetIn(BaseModel):
+    """Restablecer contraseña con el código enviado al correo."""
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=8)
+    password: str = Field(min_length=8, max_length=72)
+
+    @field_validator("password")
+    @classmethod
+    def password_strong(cls, v: str) -> str:
+        return _validate_password(v)
+
+
 class RegisterOut(BaseModel):
     """Tras registrarse: aún no hay token; hay que verificar el correo."""
     email: EmailStr
