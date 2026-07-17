@@ -67,10 +67,20 @@ try {
     npm run build          # el frontend del server usa mismo origen; no necesita VITE_KURUG_SERVER
 } finally { Pop-Location }
 
-# 4) Dependencias del backend ---------------------------------------------
-Step "4/6  Dependencias del backend (pip)"
+# 4) Dependencias del backend + bot ---------------------------------------
+Step "4/6  Dependencias (backend + bot) y yt-dlp al dia"
 if (-not (Test-Path $venvPy)) { throw "No encuentro el venv del backend en $venvPy" }
 & $venvPy -m pip install -r (Join-Path $chatApp "requirements.txt")
+# yt-dlp caduca en SEMANAS frente a los cambios de YouTube: si no se actualiza,
+# las busquedas y playlists dejan de resolver ("no reproduce"). Siempre a la ultima.
+& $venvPy -m pip install -U yt-dlp
+$botPy = Join-Path $chatApp "bot\.venv\Scripts\python.exe"
+if (Test-Path $botPy) {
+    & $botPy -m pip install -r (Join-Path $chatApp "bot\requirements.txt")
+    & $botPy -m pip install -U yt-dlp
+} else {
+    Write-Host "  (No hay venv del bot en bot\.venv; me lo salto.)" -ForegroundColor Yellow
+}
 
 # 5) Migraciones de BD -----------------------------------------------------
 Step "5/6  Migraciones de base de datos (alembic)"

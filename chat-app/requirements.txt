@@ -9,6 +9,11 @@ bcrypt
 PyJWT
 pillow
 livekit-api>=1.0
+# Resolución de música (búsquedas y playlists de YouTube). OJO: yt-dlp caduca
+# en semanas frente a los cambios de YouTube; update-kurug.ps1 lo actualiza
+# SIEMPRE a la última en cada despliegue.
+yt-dlp
+certifi
 
 # Solo para tests
 pytest

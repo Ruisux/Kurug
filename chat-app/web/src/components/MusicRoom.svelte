@@ -62,6 +62,13 @@
 
   {#if listening}<VoicePanel />{/if}
 
+  {#if !st.botOnline}
+    <div class="botwarn">
+      <i class="ti ti-plug-connected-x"></i>
+      El bot de música no está conectado: lo que añadas quedará en cola hasta que vuelva.
+    </div>
+  {/if}
+
   <div class="scroll">
     <div class="now">
       <div class="art">{#if track?.thumbnail}<img src={track.thumbnail} alt="" />{:else}<i class="ti ti-disc"></i>{/if}</div>
@@ -114,6 +121,7 @@
   </div>
 
   {#if st.error}<div class="err">{st.error}</div>{/if}
+  {#if st.info}<div class="infomsg"><i class="ti ti-playlist-add"></i> {st.info}</div>{/if}
 
   <div class="addbar">
     <input
@@ -121,7 +129,9 @@
       bind:value={query}
       on:keydown={(e) => e.key === "Enter" && add()}
     />
-    <button class="addbtn" on:click={add} aria-label="Añadir"><i class="ti ti-plus"></i></button>
+    <button class="addbtn" on:click={add} disabled={st.busy} aria-label="Añadir">
+      <i class="ti {st.busy ? 'ti-loader-2 spin' : 'ti-plus'}"></i>
+    </button>
   </div>
 </section>
 
@@ -407,6 +417,37 @@
     color: var(--shu);
     font-size: 12.5px;
     padding: 6px 16px;
+  }
+  .infomsg {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--mut);
+    font-size: 12.5px;
+    padding: 6px 16px;
+  }
+  .botwarn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-size: 12.5px;
+    color: var(--tx);
+    background: rgba(var(--shu-rgb), 0.10);
+    border-bottom: 1px solid var(--bd);
+  }
+  .botwarn i {
+    color: var(--shu);
+    font-size: 15px;
+  }
+  .spin {
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  .addbtn:disabled {
+    opacity: 0.7;
   }
   .addbar {
     display: flex;

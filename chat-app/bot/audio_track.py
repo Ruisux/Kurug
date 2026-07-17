@@ -32,6 +32,9 @@ def _ffmpeg(url: str, start: float = 0.0) -> subprocess.Popen:
         "-probesize", "32k", "-analyzeduration", "0", "-fflags", "nobuffer",
         "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
         "-i", url,
+        # -vn: si el formato resuelto viniera con vídeo (fallback "best"), no
+        # gastar CPU decodificándolo — solo interesa el audio.
+        "-vn",
         "-f", "s16le", "-ac", str(CHANNELS), "-ar", str(SAMPLE_RATE),
         "-loglevel", "quiet", "pipe:1",
     ]

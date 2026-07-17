@@ -7,7 +7,9 @@
   import { prefs } from "../lib/prefs.js";
 
   export let onOpen = () => {};
-  export let voiceChannelId = null; // voz donde suena la música (general)
+  // Solo referencia externa (Shell la pasa); la visibilidad ya no depende de
+  // un canal concreto: la música suena en TU voz, sea cual sea.
+  export const voiceChannelId = null;
   export let voiceView = false; // en la vista de recuadros se recoloca (ver CSS)
 
   let hidden = false; // ocultar el mini-reproductor (se puede volver a mostrar)
@@ -210,7 +212,9 @@
     bottom: 98px;
   }
   .mini.vv {
-    max-width: min(92vw - 580px, 480px);
+    /* El mínimo evita que en ventanas estrechas el cálculo se vuelva negativo
+       y la barra "desaparezca" aplastada. */
+    max-width: clamp(220px, 92vw - 580px, 480px);
   }
 
   /* En móvil ahorramos espacio: ocultamos el slider (queda en la sala). */

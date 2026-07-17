@@ -101,7 +101,14 @@ def livekit_token(room: str) -> str:
 
 def resolve_audio(video_id: str):
     """URL directa del mejor audio + duración (yt-dlp, sin descargar)."""
-    opts = {"quiet": True, "no_warnings": True, "skip_download": True, "format": "bestaudio/best"}
+    opts = {
+        "quiet": True, "no_warnings": True, "skip_download": True,
+        "format": "bestaudio/best",
+        # Sin esto, una petición colgada dejaba el "play" atascado minutos.
+        "socket_timeout": 10,
+        "retries": 2,
+        "noplaylist": True,  # aquí siempre es UN vídeo
+    }
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
     url = info.get("url")
@@ -144,6 +151,11 @@ class MusicBot:
         self.loop = asyncio.get_event_loop()
         # Protege el cambio de sala (self.room/self.source) frente al bucle de audio.
         self.voice_lock = asyncio.Lock()
+        # Número de orden de reproducción: si llegan varios "play" seguidos
+        # (skip skip skip), solo el ÚLTIMO puede arrancar el audio. Sin esto,
+        # una canción vieja que tardara más en resolver "ganaba" a la nueva.
+        self._play_seq = 0
+        self.current_dur: float | None = None  # duración del tema actual (si se sabe)
 
     # ---------- control (sala de música) ----------
     async def control(self):
@@ -184,17 +196,22 @@ class MusicBot:
                 pass
 
     async def _play(self, video_id: str, position: float):
+        self._play_seq += 1
+        seq = self._play_seq
         # Cortar el audio ACTUAL al instante (antes de resolver el nuevo, que
         # tarda): así siguiente/anterior se sienten inmediatos aunque el tema
         # nuevo tarde una fracción en arrancar.
         self.pcm.stop_playback()
         self._flush()
-        url, _dur = await self.loop.run_in_executor(None, resolve_cached, video_id)
+        url, dur = await self.loop.run_in_executor(None, resolve_cached, video_id)
+        if seq != self._play_seq:
+            return  # mientras resolvíamos pidieron OTRA canción: no pisarla
         if not url:
             print(f"[bot] no pude resolver audio de {video_id}")
             self._on_ended()  # pasa al siguiente
             return
         self._flush()
+        self.current_dur = dur
         self.pcm.play(url, position)
         print(f"[bot] reproduciendo {video_id}")
 
@@ -210,11 +227,17 @@ class MusicBot:
             asyncio.create_task(self.control_ws.send(json.dumps({"type": "ended"})))
 
     async def progress_loop(self):
+        # Además de la posición se manda la DURACIÓN real (yt-dlp la sabe): las
+        # entradas de playlist llegan sin duración y la barra no avanzaba.
         while True:
             await asyncio.sleep(2)
             if self.control_ws is not None and self.pcm.position() > 0:
                 try:
-                    await self.control_ws.send(json.dumps({"type": "progress", "position": self.pcm.position()}))
+                    await self.control_ws.send(json.dumps({
+                        "type": "progress",
+                        "position": self.pcm.position(),
+                        "duration": self.current_dur,
+                    }))
                 except Exception:
                     pass
 
@@ -232,11 +255,18 @@ class MusicBot:
         room_name = f"channel-{voice_cid}"
         room = rtc.Room()
         await room.connect(LIVEKIT_URL, livekit_token(room_name))
-        # Buffer corto (300 ms): menos latencia al pausar/saltar. Lo vaciamos
-        # además con clear_queue() en pausa/stop/cambio para que sea instantáneo.
-        source = rtc.AudioSource(SAMPLE_RATE, CHANNELS, queue_size_ms=300)
+        # Buffer de 1 s: absorbe los tirones de red al leer de googlevideo sin
+        # cortes. La inmediatez de pausar/saltar NO se pierde: clear_queue()
+        # vacía este buffer al instante en pausa/stop/cambio.
+        source = rtc.AudioSource(SAMPLE_RATE, CHANNELS, queue_size_ms=1000)
         track = rtc.LocalAudioTrack.create_audio_track("music", source)
         opts = rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE)
+        # MÚSICA, no voz: sin estas opciones LiveKit codifica con el perfil de
+        # micrófono (Opus a bitrate bajo + DTX que corta los pasajes suaves) y
+        # la música sonaba "rara"/apagada. 128 kbps estéreo y DTX/RED fuera.
+        opts.dtx = False
+        opts.red = False
+        opts.audio_encoding.max_bitrate = 128_000
         await room.local_participant.publish_track(track, opts)
         async with self.voice_lock:
             self.room = room

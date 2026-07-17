@@ -60,9 +60,13 @@ class MusicManager:
         self.bot: dict[int, WebSocket] = {}
 
     # ---- suscripciones ----
+    def _state(self, channel_id: int) -> dict:
+        """Estado + si el bot está conectado (la UI avisa si no lo está)."""
+        return {**self.rooms[channel_id].state(), "bot_online": channel_id in self.bot}
+
     async def subscribe(self, channel_id: int, ws: WebSocket) -> None:
         self.ui[channel_id].add(ws)
-        await ws.send_json(self.rooms[channel_id].state())
+        await ws.send_json(self._state(channel_id))
 
     def unsubscribe(self, channel_id: int, ws: WebSocket) -> None:
         self.ui[channel_id].discard(ws)
@@ -74,10 +78,12 @@ class MusicManager:
         track = room.current_track()
         if track and room.playing:
             await self._play_current(channel_id)
+        await self._broadcast(channel_id)  # la UI quita el aviso de "bot fuera"
 
-    def clear_bot(self, channel_id: int, ws: WebSocket) -> None:
+    async def clear_bot(self, channel_id: int, ws: WebSocket) -> None:
         if self.bot.get(channel_id) is ws:
             self.bot.pop(channel_id, None)
+            await self._broadcast(channel_id)  # la UI avisa de que el bot cayó
 
     # ---- comandos desde la UI ----
     async def add(self, channel_id: int, tracks: list[dict], user) -> None:
@@ -180,9 +186,14 @@ class MusicManager:
     async def on_ended(self, channel_id: int) -> None:
         await self._advance(channel_id, auto=True)
 
-    async def on_progress(self, channel_id: int, position: float) -> None:
+    async def on_progress(self, channel_id: int, position: float, duration=None) -> None:
         room = self.rooms[channel_id]
         room.position = position
+        # El bot conoce la duración REAL (yt-dlp): rellena la que falte — las
+        # entradas de playlist llegan sin duración y la barra no avanzaba.
+        track = room.current_track()
+        if track is not None and duration and not track.get("duration"):
+            track["duration"] = duration
         await self._broadcast(channel_id)
 
     # ---- internos ----
@@ -261,7 +272,7 @@ class MusicManager:
                 pass
 
     async def _broadcast(self, channel_id: int) -> None:
-        state = self.rooms[channel_id].state()
+        state = self._state(channel_id)
         for ws in list(self.ui.get(channel_id, set())):
             try:
                 await ws.send_json(state)
