@@ -202,10 +202,36 @@ async def presence_ws(websocket: WebSocket, token: str = Query(...)):
                 await presence.set_voice(uid, None)
 
             elif kind == "voice_state":
-                # Micro silenciado / ensordecido, para los iconos de ocupantes.
+                # Micro/auriculares/compartiendo/ping, para la lista de ocupantes.
+                rtt = data.get("rtt")
                 await presence.set_voice_state(
-                    uid, bool(data.get("muted")), bool(data.get("deafened")),
+                    uid,
+                    bool(data.get("muted")),
+                    bool(data.get("deafened")),
+                    bool(data.get("sharing")),
+                    int(rtt) if isinstance(rtt, (int, float)) and 0 <= rtt < 10_000 else None,
                 )
+
+            elif kind == "set_activity":
+                # Actividad automática ("jugando X"/"escuchando Y") de la app
+                # de escritorio. null = limpiar. Vive solo en memoria.
+                act_kind = data.get("kind")
+                text = (data.get("text") or "").strip()[:128]
+                if act_kind in ("game", "music") and text:
+                    await presence.set_activity(uid, {"kind": act_kind, "text": text})
+                else:
+                    await presence.set_activity(uid, None)
+
+            elif kind == "typing_dm":
+                # "Está escribiendo…" en un DM: efímero, directo al destinatario.
+                to = data.get("to")
+                if isinstance(to, int):
+                    info = presence.info.get(uid) or {}
+                    await presence.send_to(to, {
+                        "type": "dm_typing",
+                        "from": uid,
+                        "display_name": info.get("display_name") or username,
+                    })
 
             elif kind == "dm":
                 to = data.get("to")
@@ -362,6 +388,7 @@ async def chat_ws(websocket: WebSocket, channel_id: int, token: str = Query(...)
             return
         uid = user.id
         is_admin = user.is_admin
+        display_name = user.display_name
 
     await manager.connect(channel_id, websocket)
     try:
@@ -378,6 +405,15 @@ async def chat_ws(websocket: WebSocket, channel_id: int, token: str = Query(...)
                 continue
 
             kind = data.get("type")
+
+            # "Está escribiendo…": efímero, sin BD; solo a quienes miran este
+            # canal (el WS de chat se abre por canal, así que el broadcast ya
+            # llega únicamente a ellos).
+            if kind == "typing":
+                await manager.broadcast(channel_id, {
+                    "type": "typing", "user_id": uid, "display_name": display_name,
+                })
+                continue
 
             # Borrar un mensaje: solo el autor o un admin.
             if kind == "delete":

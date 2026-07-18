@@ -17,7 +17,7 @@ from .config import settings
 from .database import SessionLocal
 from .models import User, Channel
 from .security import hash_password
-from .routers import auth, channels, ws, users, avatars, presence, dms, music, voice, uploads, gifs
+from .routers import auth, channels, ws, users, avatars, presence, dms, music, voice, uploads, gifs, board
 
 
 @asynccontextmanager
@@ -65,6 +65,7 @@ app.include_router(presence.router)
 app.include_router(dms.router)
 app.include_router(music.router)
 app.include_router(voice.router)
+app.include_router(board.router)
 app.include_router(channels.router)
 app.include_router(ws.router)
 

@@ -129,6 +129,8 @@ export const api = {
 
   dms: (userId, limit = 50) => req("GET", `/dms/${userId}?limit=${limit}`),
   dmConversations: () => req("GET", "/dms/conversations"),
+  dmUnreadCounts: (lastRead) =>
+    req("POST", "/dms/unread", { json: { last_read: lastRead } }),
 
   voiceToken: (channelId) => req("POST", `/voice/token/${channelId}`),
   kickVoice: (channelId, identity) =>

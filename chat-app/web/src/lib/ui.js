@@ -46,3 +46,14 @@ export function formatTime(iso) {
     return "";
   }
 }
+
+// Color del badge de ping: verde fluido, ámbar regular, rojo malo, gris sin
+// dato. Si LiveKit reporta calidad "poor"/"lost" se fuerza el rojo aunque el
+// último ping publicado fuera bueno (cubre "se le cayó la red hace un momento").
+export function pingColor(rtt, quality = null) {
+  if (quality === "poor" || quality === "lost") return "#d43d2a";
+  if (rtt == null) return "var(--fnt)";
+  if (rtt < 80) return "var(--on, #6bbf59)";
+  if (rtt < 180) return "#d9a53b";
+  return "#d43d2a";
+}

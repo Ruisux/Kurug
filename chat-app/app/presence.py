@@ -30,6 +30,9 @@ def _info_from_user(user) -> dict:
         "status": user.status,
         "custom_status": user.custom_status,
         "accent_color": user.accent_color,
+        # Actividad ("jugando X" / "escuchando Y"): NO está en la BD (la manda
+        # la app de escritorio en vivo); connect/update_profile la PRESERVAN.
+        "activity": None,
     }
 
 
@@ -41,9 +44,9 @@ class PresenceManager:
     def __init__(self) -> None:
         self.sockets: dict[int, set[WebSocket]] = defaultdict(set)
         self.info: dict[int, dict] = {}
-        # user_id -> {"cid": channel_id, "muted": bool, "deafened": bool} de la
-        # sala de voz donde está. Sirve para mostrar "quién está en cada canal
-        # de voz" (y su estado de micro/auriculares) ANTES de entrar.
+        # user_id -> {"cid", "muted", "deafened", "sharing", "rtt"} de la sala
+        # de voz donde está. Sirve para mostrar "quién está en cada canal de
+        # voz" (su micro, si comparte pantalla y su ping) ANTES de entrar.
         self.voice: dict[int, dict] = {}
 
     def voice_map(self) -> dict[int, list[dict]]:
@@ -59,6 +62,8 @@ class PresenceManager:
                 "avatar_url": info["avatar_url"],
                 "muted": v.get("muted", False),
                 "deafened": v.get("deafened", False),
+                "sharing": v.get("sharing", False),
+                "rtt": v.get("rtt"),
             })
         return out
 
@@ -74,16 +79,36 @@ class PresenceManager:
             cur = self.voice.get(user_id)
             if cur is not None and cur["cid"] == channel_id:
                 return  # sin cambios
-            self.voice[user_id] = {"cid": channel_id, "muted": False, "deafened": False}
+            self.voice[user_id] = {
+                "cid": channel_id, "muted": False, "deafened": False,
+                "sharing": False, "rtt": None,
+            }
         await self._broadcast(self._voice_message())
 
-    async def set_voice_state(self, user_id: int, muted: bool, deafened: bool) -> None:
-        """Actualiza el micro/auriculares de alguien que está en voz y difunde."""
+    async def set_voice_state(
+        self, user_id: int, muted: bool, deafened: bool,
+        sharing: bool = False, rtt: int | None = None,
+    ) -> None:
+        """Actualiza micro/auriculares/compartir/ping de alguien en voz y difunde."""
         v = self.voice.get(user_id)
-        if v is None or (v.get("muted") == muted and v.get("deafened") == deafened):
+        if v is None:
             return
+        same_flags = (
+            v.get("muted") == muted
+            and v.get("deafened") == deafened
+            and v.get("sharing") == sharing
+        )
+        old_rtt = v.get("rtt")
         v["muted"] = muted
         v["deafened"] = deafened
+        v["sharing"] = sharing
+        if rtt is not None:
+            v["rtt"] = rtt
+        # El ping llega cada pocos segundos: si solo se movió un poco (<15 ms)
+        # y los flags no cambiaron, no vale la pena un broadcast global.
+        rtt_similar = rtt is None or (old_rtt is not None and abs(rtt - old_rtt) < 15)
+        if same_flags and rtt_similar:
+            return
         await self._broadcast(self._voice_message())
 
     def online_users(self) -> list[dict]:
@@ -98,7 +123,10 @@ class PresenceManager:
         await ws.accept()
         first_connection = not self.sockets.get(user.id)
         self.sockets[user.id].add(ws)
+        prev = self.info.get(user.id)
         self.info[user.id] = _info_from_user(user)
+        if prev is not None:  # otra conexión ya había publicado actividad
+            self.info[user.id]["activity"] = prev.get("activity")
 
         # El recién llegado recibe la foto actual de quién está conectado y de
         # quién ocupa cada sala de voz (todo en el mismo snapshot).
@@ -153,7 +181,9 @@ class PresenceManager:
         if user.id not in self.info:
             return
         was_visible = _is_visible(self.info[user.id])
+        activity = self.info[user.id].get("activity")  # no vive en la BD: preservar
         self.info[user.id] = _info_from_user(user)
+        self.info[user.id]["activity"] = activity
         now_visible = _is_visible(self.info[user.id])
 
         if now_visible:
@@ -162,6 +192,15 @@ class PresenceManager:
             await self._broadcast({"type": "presence_offline", "user_id": user.id})
         if was_visible != now_visible and user.id in self.voice:
             await self._broadcast(self._voice_message())
+
+    async def set_activity(self, user_id: int, activity: dict | None) -> None:
+        """Actividad automática (jugando/escuchando) de la app de escritorio."""
+        info = self.info.get(user_id)
+        if info is None or info.get("activity") == activity:
+            return
+        info["activity"] = activity
+        if _is_visible(info):
+            await self._broadcast({"type": "presence_update", "user": info})
 
     async def broadcast_all(self, message: dict) -> None:
         """Difunde un evento a TODAS las conexiones (p. ej. actividad de canal

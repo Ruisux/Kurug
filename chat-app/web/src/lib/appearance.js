@@ -14,6 +14,17 @@ export function toggleJpLabels() {
   jpLabels.update((v) => !v);
 }
 
+// Decoraciones sumi-e (rama de sakura, torii, marcas de agua kanji). Por
+// defecto ACTIVADAS; quien prefiera una interfaz limpia las apaga.
+const DECOR_KEY = "kurug-decorations";
+export const decorations = writable(localStorage.getItem(DECOR_KEY) !== "0");
+decorations.subscribe((v) => {
+  try { localStorage.setItem(DECOR_KEY, v ? "1" : "0"); } catch {}
+});
+export function toggleDecorations() {
+  decorations.update((v) => !v);
+}
+
 // Tamaño de la interfaz. "auto" escala según el ancho de la pantalla (14" vs
 // 24"+); el resto fija el zoom a mano. Se aplica como data-uiscale en <html>
 // y el CSS de app.css lo convierte en --ui-zoom.

@@ -4,6 +4,12 @@
   Todo se controla con variables; el toggle solo cambia [data-theme] en <html>.
 */
 
+:root {
+  /* Altura ÚNICA de las cabeceras de columna (canales, chat, voz, miembros):
+     así sus líneas separadoras quedan perfectamente alineadas entre columnas. */
+  --header-h: 64px;
+}
+
 :root,
 :root[data-theme="dark"] {
   --ink: #15110f;        /* fondo de página */

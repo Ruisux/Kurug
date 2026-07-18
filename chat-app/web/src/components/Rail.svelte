@@ -1,6 +1,5 @@
 <script>
   import Avatar from "./Avatar.svelte";
-  import ThemeToggle from "./ThemeToggle.svelte";
 
   export let me;
   export let onProfile = () => {};
@@ -30,7 +29,6 @@
   <button class="navbtn small" on:click={onAppearance} title="Apariencia" aria-label="Apariencia">
     <i class="ti ti-palette"></i>
   </button>
-  <ThemeToggle />
   <button class="me" on:click={onProfile} title="Tu perfil" aria-label="Tu perfil">
     <Avatar
       name={me.display_name}
@@ -44,7 +42,7 @@
 
 <style>
   .rail {
-    width: 62px;
+    width: 76px;
     background: var(--rail);
     border-right: 1px solid var(--bd);
     display: flex;
@@ -54,8 +52,8 @@
     gap: 11px;
   }
   .seal {
-    width: 42px;
-    height: 42px;
+    width: 46px;
+    height: 46px;
     flex: none;
     border-radius: 14px;
     background: var(--shu);
@@ -75,8 +73,8 @@
   }
   .navbtn {
     position: relative;
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
     background: var(--pan);
     border: 1px solid var(--bd);
@@ -100,7 +98,7 @@
   .navbtn.active::before {
     content: "";
     position: absolute;
-    left: -11px;
+    left: -14px;
     top: 10px;
     bottom: 10px;
     width: 4px;
@@ -108,9 +106,9 @@
     background: var(--shu);
   }
   .navbtn.small {
-    width: 40px;
-    height: 40px;
-    font-size: 17px;
+    width: 43px;
+    height: 43px;
+    font-size: 18px;
   }
   .spacer {
     flex: 1;

@@ -10,18 +10,37 @@ presencia (mensaje {"type":"dm", ...}), que ya tiene una conexión por usuario.
 from datetime import timezone
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_, and_, func
 from sqlalchemy.orm import joinedload
 
 from ..deps import DbSession, CurrentUser
 from ..models import User, DirectMessage, DMReaction
-from ..schemas import DirectMessageOut, DMConversation, UserOut, ReplyPreview, ReactionGroup
+from ..schemas import DirectMessageOut, DMConversation, UnreadQuery, UserOut, ReplyPreview, ReactionGroup
 
 router = APIRouter(prefix="/dms", tags=["dms"])
 
 
 def _as_utc(dt):
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
+@router.post("/unread", response_model=dict[int, int])
+def dm_unread_counts(payload: UnreadQuery, db: DbSession, user: CurrentUser):
+    """No-leídos por conversación de DM (partner_id -> cuántos).
+
+    Igual que /channels/unread: el cliente lleva su "último DM leído" por
+    persona (localStorage) y lo manda; el server cuenta lo que esa persona te
+    envió con id mayor. Sin estado por usuario en el server.
+    """
+    rows = db.execute(
+        select(DirectMessage.sender_id, DirectMessage.id)
+        .where(DirectMessage.recipient_id == user.id)
+    ).all()
+    out: dict[int, int] = {}
+    for sender_id, mid in rows:
+        if mid > payload.last_read.get(sender_id, 0):
+            out[sender_id] = out.get(sender_id, 0) + 1
+    return out
 
 
 @router.get("/conversations", response_model=list[DMConversation])

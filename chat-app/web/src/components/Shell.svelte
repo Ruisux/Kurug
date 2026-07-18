@@ -9,6 +9,8 @@
   import { applyShortcuts } from "../lib/shortcuts.js";
   import { connectMusic, disconnectMusic, musicChannelId } from "../lib/music.js";
   import { joinVoice, voiceState } from "../lib/voice.js";
+  import { activity } from "../lib/desktop.js";
+  import { prefs } from "../lib/prefs.js";
 
   import Rail from "./Rail.svelte";
   import ChannelList from "./ChannelList.svelte";
@@ -19,7 +21,6 @@
   import ProfileModal from "./ProfileModal.svelte";
   import AudioSettings from "./AudioSettings.svelte";
   import AppearanceModal from "./AppearanceModal.svelte";
-  import VoiceAudio from "./VoiceAudio.svelte";
   import MiniBar from "./MiniBar.svelte";
   import UpdateBanner from "./UpdateBanner.svelte";
 
@@ -34,6 +35,14 @@
   let showProfile = false;
   let showAudio = false;
   let showAppearance = false;
+
+  // Los modales son position:fixed del documento; un <video> en pantalla
+  // completa vive en la top-layer del navegador y los tapa (el modal "se sale
+  // y no se puede cerrar"). Antes de abrir cualquiera, salir de fullscreen.
+  function openModal(set) {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    set();
+  }
 
   let chatWs = null;
   let presWs = null;
@@ -72,6 +81,88 @@
     }
     if (unread[channelId]) {
       unread = { ...unread, [channelId]: 0 };
+    }
+  }
+
+  // --- Actividad automática (jugando/escuchando) — app de escritorio ---
+  let currentActivity = null; // lo último que detectó el main de Electron
+  function pushActivity() {
+    if (!activity.supported) return;
+    if (get(prefs).shareActivity !== false && currentActivity) {
+      presWs?.send({ type: "set_activity", ...currentActivity });
+    } else {
+      presWs?.send({ type: "set_activity" }); // limpiar
+    }
+  }
+  // Reaccionar al toggle de privacidad en vivo.
+  let lastShareActivity = null;
+  $: {
+    const share = $prefs.shareActivity !== false;
+    if (activity.supported && share !== lastShareActivity) {
+      if (lastShareActivity !== null) {
+        activity.setEnabled(share);
+        if (!share) {
+          currentActivity = null;
+          pushActivity();
+        }
+      }
+      lastShareActivity = share;
+    }
+  }
+
+  // --- "X está escribiendo…" (efímero, se apaga solo a los 4 s) ---
+  let typingUsers = {}; // userId -> { name, until }
+  const typingPrune = setInterval(() => {
+    const now = Date.now();
+    const keep = Object.entries(typingUsers).filter(([, v]) => v.until > now);
+    if (keep.length !== Object.keys(typingUsers).length) {
+      typingUsers = Object.fromEntries(keep);
+    }
+  }, 1000);
+  onDestroy(() => clearInterval(typingPrune));
+
+  function noteTyping(id, name) {
+    if (id === meUser.id) return;
+    typingUsers = { ...typingUsers, [id]: { name, until: Date.now() + 4000 } };
+  }
+  function clearTyping(id) {
+    if (typingUsers[id]) {
+      const { [id]: _gone, ...rest } = typingUsers;
+      typingUsers = rest;
+    }
+  }
+
+  // Emisión con freno: como mucho un aviso cada 3 s por destino.
+  let lastTypingSent = 0;
+  function sendTyping() {
+    const now = Date.now();
+    if (now - lastTypingSent < 3000) return;
+    lastTypingSent = now;
+    if (view.kind === "channel") chatWs?.send({ type: "typing" });
+    else if (view.kind === "dm") presWs?.send({ type: "typing_dm", to: view.user.id });
+  }
+
+  // --- No leídos por conversación de DM (partnerId -> contador) ---
+  // Antes las notificaciones de DM SONABAN pero no se veía quién escribió ni
+  // cuántos mensajes: mismo esquema que los canales, badge en DIRECTOS.
+  let dmUnread = {};
+  const DM_LASTREAD_KEY = "kurug-dm-lastread";
+  let dmLastRead = loadDmLastRead();
+
+  function loadDmLastRead() {
+    try {
+      return JSON.parse(localStorage.getItem(DM_LASTREAD_KEY)) || {};
+    } catch {
+      return {};
+    }
+  }
+  function markDmRead(partnerId, upToId) {
+    if (upToId != null && (dmLastRead[partnerId] || 0) < upToId) {
+      dmLastRead[partnerId] = upToId;
+      try { localStorage.setItem(DM_LASTREAD_KEY, JSON.stringify(dmLastRead)); } catch {}
+    }
+    if (dmUnread[partnerId]) {
+      dmUnread = { ...dmUnread, [partnerId]: 0 };
     }
   }
 
@@ -160,11 +251,12 @@
     return m;
   })();
 
-  // usuario_id -> { muted, deafened } (iconos en los recuadros de la llamada).
+  // usuario_id -> { muted, deafened, rtt } (iconos y ping en los recuadros).
   $: voiceFlags = (() => {
     const m = {};
     for (const members of Object.values(voiceByChannel))
-      for (const u of members) m[u.id] = { muted: !!u.muted, deafened: !!u.deafened };
+      for (const u of members)
+        m[u.id] = { muted: !!u.muted, deafened: !!u.deafened, rtt: u.rtt ?? null };
     return m;
   })();
 
@@ -179,18 +271,36 @@
     }
   }
 
-  // Y también mi estado de micro/auriculares, para que los demás vean los
-  // iconos de silenciado/ensordecido en la lista de ocupantes.
+  // Y también mi estado de micro/auriculares/compartiendo, para que los demás
+  // vean los iconos y el badge EN DIRECTO en la lista de ocupantes.
   let prevVoiceFlags = "";
   $: {
     const flags = $voiceState.active
-      ? JSON.stringify({ muted: $voiceState.muted, deafened: $voiceState.deafened })
+      ? JSON.stringify({
+          muted: $voiceState.muted,
+          deafened: $voiceState.deafened,
+          sharing: $voiceState.sharing,
+        })
       : "";
     if (flags && flags !== prevVoiceFlags) {
-      presWs?.send({ type: "voice_state", ...JSON.parse(flags) });
+      presWs?.send({ type: "voice_state", ...JSON.parse(flags), rtt: $voiceState.myRtt ?? null });
     }
     prevVoiceFlags = flags;
   }
+
+  // El ping (RTT) se reenvía periódicamente mientras estoy en voz: los flags
+  // solo viajan al cambiar, pero la latencia cambia sola cada pocos segundos.
+  const rttTimer = setInterval(() => {
+    const st = get(voiceState);
+    if (st.active && st.myRtt != null) {
+      presWs?.send({
+        type: "voice_state",
+        muted: st.muted, deafened: st.deafened, sharing: st.sharing,
+        rtt: st.myRtt,
+      });
+    }
+  }, 5000);
+  onDestroy(() => clearInterval(rttTimer));
 
   onMount(async () => {
     try {
@@ -202,7 +312,19 @@
     try {
       unread = await api.unreadCounts(lastRead);
     } catch {}
-    presWs = presenceSocket(get(token), handlePresence);
+    try {
+      dmUnread = await api.dmUnreadCounts(dmLastRead);
+    } catch {}
+    // Al (re)abrir el socket de presencia, re-publicar la actividad vigente
+    // (el server la pierde si se cayó la conexión).
+    presWs = presenceSocket(get(token), handlePresence, () => pushActivity());
+    if (activity.supported) {
+      activity.onUpdate((act) => {
+        currentActivity = act;
+        pushActivity();
+      });
+      activity.setEnabled(get(prefs).shareActivity !== false);
+    }
     initNotifications();
     // Conexión de música global: el estado persiste por toda la app.
     const musicCh = channels.find((c) => c.is_music);
@@ -228,6 +350,8 @@
     chatWs?.close();
     chatWs = null;
     view = { kind: "channel", id };
+    typingUsers = {}; // los "escribiendo…" son de la vista anterior
+    lastTypingSent = 0;
     mobilePane = "chat";
     try {
       messages = (await api.messages(id)).map(normChannel);
@@ -244,12 +368,16 @@
     chatWs?.close();
     chatWs = null;
     view = { kind: "dm", user };
+    typingUsers = {};
+    lastTypingSent = 0;
     mobilePane = "chat";
     try {
       messages = (await api.dms(user.id)).map(normDm);
     } catch {
       messages = [];
     }
+    // Abrir la conversación la marca leída (el badge de DIRECTOS se apaga).
+    markDmRead(user.id, messages.at(-1)?.id);
   }
 
   function handleChat(m) {
@@ -267,8 +395,11 @@
       messages = messages.map((x) =>
         x.id === m.id ? { ...x, pinned: !!m.pinned_at } : x,
       );
+    } else if (m.type === "typing") {
+      noteTyping(m.user_id, m.display_name);
     } else if (m.type === "message" && view.kind === "channel" && m.channel_id === view.id) {
       messages = [...messages, normChannel(m)];
+      if (m.author_id != null) clearTyping(m.author_id); // envió: ya no escribe
       // Estás viéndolo y con foco: márcalo leído. La notificación/sonido los
       // gestiona channel_activity (cubre todos los canales sin duplicar).
       if (document.hasFocus()) markRead(m.channel_id, m.id);
@@ -334,18 +465,29 @@
       messages = messages.map((x) =>
         x.id === evt.id ? { ...x, pinned: !!evt.pinned_at } : x,
       );
+    } else if (evt.type === "dm_typing") {
+      // Solo interesa si estás mirando ESA conversación.
+      if (view.kind === "dm" && view.user.id === evt.from) {
+        noteTyping(evt.from, evt.display_name);
+      }
     } else if (evt.type === "dm") {
       const m = evt.message;
       const partner = m.sender_id === meUser.id ? m.recipient_id : m.sender_id;
+      clearTyping(m.sender_id); // envió: ya no está escribiendo
       if (view.kind === "dm" && view.user.id === partner) {
         messages = [...messages, normDm(m)];
       }
       if (m.sender_id !== meUser.id) {
         const viewingThis = view.kind === "dm" && view.user.id === partner;
-        if (!(viewingThis && document.hasFocus())) {
+        if (viewingThis && document.hasFocus()) {
+          markDmRead(partner, m.id); // lo estás leyendo ahora mismo
+        } else {
+          dmUnread = { ...dmUnread, [partner]: (dmUnread[partner] || 0) + 1 };
           playSound("notify");
           notify(m.sender_display_name, m.content, { tag: `dm-${partner}` });
         }
+      } else {
+        markDmRead(partner, m.id); // lo que TÚ envías cuenta como leído
       }
       refreshConvos();
     }
@@ -458,9 +600,9 @@
       me={$me}
       homeActive={view.kind === "channel" && !isMusicChannel}
       musicActive={isMusicChannel}
-      onProfile={() => (showProfile = true)}
-      onAudio={() => (showAudio = true)}
-      onAppearance={() => (showAppearance = true)}
+      onProfile={() => openModal(() => (showProfile = true))}
+      onAudio={() => openModal(() => (showAudio = true))}
+      onAppearance={() => openModal(() => (showAppearance = true))}
       onHome={() => { const c = channels.find((x) => x.kind !== "voice" && !x.is_music) || channels.find((x) => x.kind !== "voice") || channels[0]; if (c) openChannel(c.id); }}
       onMusic={() => $musicChannelId != null && openChannel($musicChannelId)}
     />
@@ -469,6 +611,7 @@
       {currentChannelId}
       {currentDmUserId}
       {unread}
+      {dmUnread}
       dms={dmConvos}
       {dmStatus}
       isAdmin={$me.is_admin}
@@ -483,11 +626,15 @@
   </div>
   <div class="main">
     {#if view.kind === "voice"}
-      <VoiceView channelName={voiceViewName} {voiceFlags} onBack={backToList} />
+      <VoiceView channelName={voiceViewName} channelId={view.id} {voiceFlags} onBack={backToList} />
     {:else if isMusicChannel}
       <MusicRoom {voiceChannelId} onBack={backToList} />
     {:else}
-      <ChatView {header} channelId={currentChannelId} dmUserId={currentDmUserId} {messages} {allUsers} {onSend} {onDelete} {onEdit} {onReact} {onPin} onBack={backToList} />
+      <ChatView
+        {header} channelId={currentChannelId} dmUserId={currentDmUserId} {messages} {allUsers}
+        typing={Object.values(typingUsers).map((t) => t.name)} onTyping={sendTyping}
+        {onSend} {onDelete} {onEdit} {onReact} {onPin} onBack={backToList}
+      />
     {/if}
   </div>
   <div class="aside-wrap">
@@ -509,9 +656,6 @@
 
 <!-- Aviso de actualización (solo escritorio). -->
 <UpdateBanner />
-
-<!-- Audio de voz global: persiste aunque cambies de canal (la música no se corta). -->
-<VoiceAudio />
 
 <!-- Mini-reproductor flotante: visible fuera de la sala de música. -->
 {#if !isMusicChannel}

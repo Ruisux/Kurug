@@ -61,3 +61,17 @@ export const windowControls = {
   toggleMaximize() { if (isElectron) return w.kurug.window.toggleMaximize(); },
   close() { if (isElectron) return w.kurug.window.close(); },
 };
+
+// --- Actividad automática (jugando / escuchando) — solo escritorio Windows ---
+// El main de Electron sondea procesos; aquí solo se enciende/apaga y se
+// reciben las novedades. En web/Mac `supported` es false (se ve la de otros).
+export const activity = {
+  supported: isElectron && (w.kurug.platform === "win32") && !!w.kurug.activity,
+  setEnabled(on) {
+    if (this.supported) w.kurug.activity.setEnabled(on);
+  },
+  onUpdate(cb) {
+    if (this.supported) return w.kurug.activity.onUpdate(cb);
+    return () => {};
+  },
+};

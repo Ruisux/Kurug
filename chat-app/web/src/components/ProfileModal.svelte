@@ -3,6 +3,8 @@
   import { STATUSES } from "../lib/ui.js";
   import { api } from "../lib/api.js";
   import { token, me } from "../lib/stores.js";
+  import { activity } from "../lib/desktop.js";
+  import { prefs, setPref } from "../lib/prefs.js";
 
   export let onClose = () => {};
   export let onSaved = () => {};
@@ -10,7 +12,6 @@
   const user = $me;
   let nickname = user.nickname || "";
   let bio = user.bio || "";
-  let accent = user.accent_color || "#e2553b";
   let status = user.status || "online";
   let custom = user.custom_status || "";
   let preview = user.avatar_url;
@@ -31,10 +32,10 @@
     error = "";
     try {
       if (selectedFile) await api.uploadAvatar(selectedFile);
+      // El color de acento se cambia en Apariencia (aquí estaba duplicado).
       const updated = await api.updateMe({
         nickname: nickname.trim() || null,
         bio: bio.trim() || null,
-        accent_color: accent,
         status,
         custom_status: custom.trim() || null,
       });
@@ -101,6 +102,20 @@
       <input bind:value={custom} maxlength="64" placeholder="trabajando, jugando…" />
     </label>
 
+    {#if activity.supported}
+      <label class="fld sharerow">
+        <span>Mostrar lo que juegas o escuchas</span>
+        <button
+          type="button" class="sw" class:on={$prefs.shareActivity !== false}
+          on:click={() => setPref("shareActivity", !($prefs.shareActivity !== false))}
+          role="switch" aria-checked={$prefs.shareActivity !== false} aria-label="Compartir actividad"
+        >
+          <span class="knob"></span>
+        </button>
+        <small>La app detecta juegos conocidos y la música de Spotify (solo en escritorio).</small>
+      </label>
+    {/if}
+
     <div class="fld">
       <span>Disponibilidad</span>
       <div class="statuses">
@@ -116,14 +131,6 @@
         {/each}
       </div>
     </div>
-
-    <label class="fld">
-      <span>Color de acento</span>
-      <div class="accent">
-        <input type="color" bind:value={accent} />
-        <code>{accent}</code>
-      </div>
-    </label>
 
     {#if error}<p class="error">{error}</p>{/if}
 
@@ -267,25 +274,47 @@
     height: 9px;
     border-radius: 50%;
   }
-  .accent {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .accent input[type="color"] {
-    width: 46px;
-    height: 34px;
-    padding: 2px;
-    border-radius: 9px;
-  }
-  .accent code {
-    font-size: 13px;
-    color: var(--mut);
-  }
   .error {
     margin: 0;
     color: var(--shu);
     font-size: 13px;
+  }
+  /* Interruptor de "compartir actividad" (mismo look que los de Apariencia). */
+  .sharerow {
+    gap: 6px;
+  }
+  .sharerow small {
+    color: var(--fnt);
+    font-size: 11px;
+  }
+  .sw {
+    width: 38px;
+    height: 22px;
+    flex: none;
+    border-radius: 999px;
+    background: var(--field);
+    border: 1px solid var(--bd2);
+    position: relative;
+    padding: 0;
+    cursor: pointer;
+  }
+  .knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--mut);
+    transition: transform 0.15s, background 0.15s;
+  }
+  .sw.on {
+    background: rgba(var(--shu-rgb), 0.3);
+    border-color: var(--shu);
+  }
+  .sw.on .knob {
+    transform: translateX(16px);
+    background: var(--shu);
   }
   .actions {
     display: flex;

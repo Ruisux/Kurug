@@ -12,6 +12,7 @@
     SCREEN_PRESETS,
   } from "../lib/voice.js";
   import { screenPicker } from "../lib/desktop.js";
+  import { pingColor } from "../lib/ui.js";
 
   const presetEntries = Object.entries(SCREEN_PRESETS);
   // En Electron la calidad se elige en el selector de pantalla propio; aquí solo
@@ -39,7 +40,9 @@
     return e.currentTarget.closest(".tile")?.querySelector("video");
   }
   function fullscreen(e) {
-    videoOf(e)?.requestFullscreen?.();
+    // El contenedor, no el <video>: evita el tinte verde del share propio en
+    // pantalla completa (bug de render de Chromium con el track codificándose).
+    e.currentTarget.closest(".tile")?.requestFullscreen?.();
   }
   async function pip(e) {
     const v = videoOf(e);
@@ -77,11 +80,17 @@
   <div class="voice">
     <div class="bar">
       <span class="live"><i class="ti ti-broadcast"></i> En voz · {peers.length + 1}</span>
+      {#if $voiceState.myRtt != null}
+        <span class="myping" style="color:{pingColor($voiceState.myRtt)}" title="Tu latencia con el servidor de voz">
+          <i class="ti ti-wifi"></i> {$voiceState.myRtt} ms
+        </span>
+      {/if}
 
       <div class="chips">
         <span class="chip" class:muted={$voiceState.muted} class:speaking={$voiceState.meSpeaking && !$voiceState.muted}>
           <Avatar name={$me.display_name} url={$me.avatar_url} size={22} />
           tú
+          {#if $voiceState.sharing}<span class="live-badge">EN DIRECTO</span>{/if}
           {#if $voiceState.deafened}<i class="ti ti-headphones-off"></i>
           {:else if $voiceState.muted}<i class="ti ti-microphone-off"></i>{/if}
         </span>
@@ -89,7 +98,7 @@
           <span class="chip" class:speaking={p.speaking}>
             <Avatar name={p.name} url={p.avatar} size={22} />
             {p.name}
-            {#if p.hasVideo}<i class="ti ti-device-desktop"></i>{/if}
+            {#if p.hasVideo}<span class="live-badge">EN DIRECTO</span>{/if}
           </span>
         {/each}
       </div>
@@ -193,6 +202,14 @@
     gap: 6px;
     flex: none;
   }
+  .myping {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    flex: none;
+  }
   .chips {
     display: flex;
     align-items: center;
@@ -214,6 +231,17 @@
   }
   .chip.muted {
     opacity: 0.6;
+  }
+  .live-badge {
+    flex: none;
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #fff;
+    background: #d43d2a;
+    border-radius: 4px;
+    padding: 1.5px 5px;
+    line-height: 1.3;
   }
   /* Ilumina el chip de quien está hablando (activo en el micro). */
   .chip.speaking {

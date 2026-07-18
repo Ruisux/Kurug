@@ -5,7 +5,7 @@
   import EmojiPicker from "./EmojiPicker.svelte";
   import GifPicker from "./GifPicker.svelte";
   import { formatTime } from "../lib/ui.js";
-  import { jpLabels, channelKanji } from "../lib/appearance.js";
+  import { jpLabels, channelKanji, decorations } from "../lib/appearance.js";
   import { me } from "../lib/stores.js";
   import { api } from "../lib/api.js";
   import { voiceState } from "../lib/voice.js";
@@ -22,6 +22,15 @@
   export let onPin = () => {};
   export let onBack = () => {};
   export let allUsers = []; // para resolver quién reaccionó (tooltip)
+  export let typing = [];   // nombres de quienes están escribiendo aquí
+  export let onTyping = () => {}; // avisar de que YO estoy escribiendo
+
+  $: typingText =
+    typing.length === 1
+      ? `${typing[0]} está escribiendo…`
+      : typing.length === 2
+        ? `${typing[0]} y ${typing[1]} están escribiendo…`
+        : "Varias personas están escribiendo…";
 
   // "rui, ana y tú" — quiénes usaron una reacción, para verlo al pasar el mouse.
   $: userById = new Map(allUsers.map((u) => [u.id, u]));
@@ -31,6 +40,20 @@
   function nameColor(m) {
     const u = m.userId != null ? userById.get(m.userId) : userByName.get(m.user);
     return u?.accent_color || null;
+  }
+
+  // --- Agrupación estilo Discord: mensajes seguidos del mismo autor no
+  // repiten avatar ni nombre; tras una pausa larga vuelve la cabecera. ---
+  const GROUP_MS = 7 * 60 * 1000;
+  function authorKey(m) {
+    // Canales identifican por username (REST y WS lo traen); DMs por sender_id.
+    return m.user ?? m.userId;
+  }
+  function isGrouped(m, i) {
+    if (i === 0 || m.replyTo) return false; // una respuesta siempre lleva cabecera
+    const prev = messages[i - 1];
+    if (authorKey(m) !== authorKey(prev)) return false;
+    return new Date(m.created_at) - new Date(prev.created_at) < GROUP_MS;
   }
   function reactedBy(r) {
     const names = (r.users || []).map((id) =>
@@ -157,6 +180,7 @@
   }
 
   function onComposerInput() {
+    onTyping(); // "estoy escribiendo" (el throttle vive en Shell)
     const el = composerInput;
     if (!el) return;
     const pos = el.selectionStart;
@@ -448,7 +472,7 @@
 </script>
 
 <section class="chat">
-  <span class="wm serif" aria-hidden="true">道</span>
+  {#if $decorations}<span class="wm serif" aria-hidden="true">道</span>{/if}
 
   <header>
     <button class="back" on:click={onBack} aria-label="Volver"><i class="ti ti-chevron-left"></i></button>
@@ -540,9 +564,14 @@
   {/if}
 
   <div class="messages" bind:this={scroller}>
-    {#each messages as m (m.id)}
-      <article class="msg" class:flash={flashId === m.id} data-mid={m.id}>
-        <Avatar name={m.name} url={m.avatar} size={40} />
+    {#each messages as m, i (m.id)}
+      <article class="msg" class:flash={flashId === m.id} class:grouped={isGrouped(m, i)} data-mid={m.id}>
+        {#if isGrouped(m, i)}
+          <!-- Hueco del avatar: la hora aparece solo al pasar el mouse. -->
+          <span class="gutter"><span class="gtime">{formatTime(m.created_at)}</span></span>
+        {:else}
+          <Avatar name={m.name} url={m.avatar} size={40} />
+        {/if}
         <div class="body">
           {#if m.replyTo}
             <div class="replyctx">
@@ -551,12 +580,19 @@
               <span class="snip">{m.replyTo.content || "📷 Imagen"}</span>
             </div>
           {/if}
+          {#if !isGrouped(m, i)}
           <div class="meta">
             <span class="author" class:mine={m.mine} style={nameColor(m) ? `color: ${nameColor(m)}` : ""}>{m.name}</span>
             <span class="time">{formatTime(m.created_at)}</span>
             {#if m.edited}<span class="edited">(editado)</span>{/if}
             {#if m.pinned}<span class="pinmark"><i class="ti ti-pin"></i> fijado</span>{/if}
           </div>
+          {:else if m.edited || m.pinned}
+          <div class="meta slim">
+            {#if m.edited}<span class="edited">(editado)</span>{/if}
+            {#if m.pinned}<span class="pinmark"><i class="ti ti-pin"></i> fijado</span>{/if}
+          </div>
+          {/if}
           {#if editingId === m.id}
             <!-- svelte-ignore a11y-autofocus -->
             <input class="editinput" bind:value={editDraft} on:keydown={(e) => editKey(e, m)} autofocus />
@@ -674,6 +710,13 @@
     </div>
   {/if}
 
+  {#if typing.length}
+    <div class="typingbar">
+      <span class="tdots" aria-hidden="true"><i></i><i></i><i></i></span>
+      {typingText}
+    </div>
+  {/if}
+
   <div class="composer">
     <input
       type="file"
@@ -753,7 +796,9 @@
     line-height: 1;
   }
   header {
-    padding: 12px 18px;
+    box-sizing: border-box;
+    min-height: var(--header-h); /* alineada con las demás columnas */
+    padding: 0 18px;
     border-bottom: 1px solid var(--bd);
     display: flex;
     align-items: center;
@@ -920,6 +965,31 @@
     gap: 12px;
     padding: 8px 18px;
     position: relative;
+  }
+  /* Mensaje agrupado (mismo autor, poco tiempo): sin avatar ni cabecera y
+     más pegado al anterior — estilo Discord. */
+  .msg.grouped {
+    padding-top: 1.5px;
+    padding-bottom: 1.5px;
+  }
+  .gutter {
+    width: 40px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .gutter .gtime {
+    font-size: 10px;
+    color: var(--fnt);
+    opacity: 0;
+    white-space: nowrap;
+  }
+  .msg.grouped:hover .gtime {
+    opacity: 1;
+  }
+  .meta.slim {
+    gap: 6px;
   }
   .msg:hover {
     background: rgba(255, 255, 255, 0.015);
@@ -1453,6 +1523,33 @@
   }
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+  /* "X está escribiendo…" sobre el compositor, con puntitos animados. */
+  .typingbar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 18px 0;
+    font-size: 12px;
+    color: var(--mut);
+    min-height: 18px;
+  }
+  .tdots {
+    display: inline-flex;
+    gap: 3px;
+  }
+  .tdots i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--mut);
+    animation: tdot 1.2s infinite ease-in-out;
+  }
+  .tdots i:nth-child(2) { animation-delay: 0.15s; }
+  .tdots i:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes tdot {
+    0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-2px); }
   }
   .composer {
     padding: 12px 16px;

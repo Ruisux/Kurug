@@ -32,6 +32,17 @@ contextBridge.exposeInMainWorld("kurug", {
     },
   },
 
+  // Actividad (jugando X / escuchando Y): el main sondea procesos de Windows;
+  // setEnabled arranca/para el sondeo y onUpdate entrega {kind, text} | null.
+  activity: {
+    setEnabled: (on) => ipcRenderer.send("activity:setEnabled", !!on),
+    onUpdate: (cb) => {
+      const listener = (_e, data) => cb(data);
+      ipcRenderer.on("activity:update", listener);
+      return () => ipcRenderer.removeListener("activity:update", listener);
+    },
+  },
+
   // Atajos globales: register() devuelve los aceleradores registrados; onTrigger
   // avisa cuando se pulsa uno (con app en segundo plano).
   shortcuts: {

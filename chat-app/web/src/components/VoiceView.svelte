@@ -4,7 +4,9 @@
   // aro de tinta al hablar, cámaras y pantallas compartidas, y una barra de
   // controles gorda (micro, ensordecer, cámara, compartir, salir).
   import Avatar from "./Avatar.svelte";
+  import Whiteboard from "./Whiteboard.svelte";
   import { me } from "../lib/stores.js";
+  import { pingColor } from "../lib/ui.js";
   import {
     voiceState,
     toggleMute,
@@ -17,8 +19,13 @@
   } from "../lib/voice.js";
 
   export let channelName = "voz";
-  export let voiceFlags = {}; // user_id -> { muted, deafened } (por presencia)
+  export let channelId = null; // para la pizarra compartida del canal
+  export let voiceFlags = {}; // user_id -> { muted, deafened, rtt } (por presencia)
   export let onBack = () => {};
+
+  let boardOpen = false;
+  // Al cambiar de canal, la pizarra abierta era la del canal anterior.
+  $: if (channelId != null) boardOpen = false;
 
   // Solo reasigna si el stream de verdad cambió: re-poner el mismo srcObject
   // reinicia el <video> y provoca parpadeos en cada re-render.
@@ -30,7 +37,9 @@
     };
   }
   function fs(e) {
-    e.currentTarget.closest(".tile")?.querySelector("video")?.requestFullscreen?.();
+    // Pantalla completa del CONTENEDOR, no del <video>: evita la ruta de
+    // render con tinte verde del share propio y conserva los botones encima.
+    e.currentTarget.closest(".tile")?.requestFullscreen?.();
   }
 
   $: st = $voiceState;
@@ -40,12 +49,20 @@
     ...(st.sharing ? [{ id: "me-screen", name: "Tú", stream: localShareStream(), me: true }] : []),
     ...peers.filter((p) => p.hasScreen).map((p) => ({ id: p.id + "-s", name: p.name, stream: p.screen })),
   ];
+  // Mosaico tipo Discord: columnas ≈ raíz cuadrada del nº de recuadros
+  // (1→1, 2→2, 3-4→2, 5-9→3, 10-16→4…) y el CSS limita el ancho para que el
+  // mosaico completo quepa a lo alto — antes quedaban en una sola línea
+  // estirada con un hueco enorme debajo.
+  $: gridCols = Math.ceil(Math.sqrt(people.length || 1));
+  $: gridRows = Math.ceil((people.length || 1) / gridCols);
+
   // Participantes (yo + peers) para los recuadros de personas.
   $: people = [
     {
       id: "me", name: $me.display_name, avatar: $me.avatar_url, self: true,
       camera: st.cameraOn ? localCameraStream() : null, hasCamera: st.cameraOn,
       speaking: st.meSpeaking && !st.muted, micMuted: st.muted, deafened: st.deafened,
+      sharing: st.sharing, rtt: st.myRtt, quality: null,
     },
     ...peers.map((p) => ({
       id: p.id, name: p.name, avatar: p.avatar, self: false,
@@ -53,6 +70,9 @@
       // Micro: lo dice LiveKit (TrackMuted) o la presencia; auriculares: presencia.
       micMuted: p.micMuted || !!voiceFlags[p.id]?.muted,
       deafened: !!voiceFlags[p.id]?.deafened,
+      sharing: p.hasScreen,
+      rtt: voiceFlags[p.id]?.rtt ?? null, // su ping, publicado por presencia
+      quality: p.quality,
     })),
   ];
 </script>
@@ -69,6 +89,11 @@
     {/if}
   </header>
 
+  {#if boardOpen && channelId != null}
+    <div class="boardwrap">
+      <Whiteboard {channelId} onClose={() => (boardOpen = false)} />
+    </div>
+  {:else}
   <div class="stage">
     {#if st.error}<div class="err">{st.error}</div>{/if}
 
@@ -84,7 +109,7 @@
       </div>
     {/if}
 
-    <div class="grid">
+    <div class="grid" style="--cols:{gridCols}; --rows:{gridRows}">
       {#each people as p (p.id)}
         <div class="tile" class:speaking={p.speaking}>
           {#if p.hasCamera && p.camera}
@@ -94,13 +119,18 @@
           {/if}
           <span class="lbl">
             {p.name}{#if p.self}&nbsp;(tú){/if}
+            {#if p.sharing}<span class="live-badge">EN DIRECTO</span>{/if}
             {#if p.deafened}<i class="ti ti-headphones-off mo" title="Ensordecido"></i>
             {:else if p.micMuted}<i class="ti ti-microphone-off mo" title="Micro silenciado"></i>{/if}
+            <span class="ping" style="color:{pingColor(p.rtt, p.quality)}" title="Latencia con el servidor de voz">
+              <i class="ti ti-wifi"></i>{p.rtt != null ? ` ${p.rtt} ms` : ""}
+            </span>
           </span>
         </div>
       {/each}
     </div>
   </div>
+  {/if}
 
   <div class="bar">
     <button class="cb" class:on={st.muted} on:click={toggleMute} title="Silenciar" aria-label="Silenciar micrófono">
@@ -114,6 +144,9 @@
     </button>
     <button class="cb" class:act={st.sharing} on:click={toggleShare} title="Compartir pantalla" aria-label="Compartir pantalla">
       <i class="ti ti-screen-share"></i>
+    </button>
+    <button class="cb" class:act={boardOpen} on:click={() => (boardOpen = !boardOpen)} title="Pizarra compartida" aria-label="Pizarra compartida">
+      <i class="ti ti-chalkboard"></i>
     </button>
     <button class="cb leave" on:click={leaveVoice} title="Salir de la voz" aria-label="Salir de la voz">
       <i class="ti ti-phone-off"></i>
@@ -130,10 +163,12 @@
     background: var(--ink);
   }
   header {
+    box-sizing: border-box;
+    min-height: var(--header-h); /* alineada con las demás columnas */
     display: flex;
     align-items: center;
     gap: 11px;
-    padding: 14px 18px;
+    padding: 0 18px;
     border-bottom: 1px solid var(--bd);
   }
   .back {
@@ -149,7 +184,20 @@
   .count.connecting { color: var(--shu); }
   .spin { animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .stage { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
+  .stage {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+  }
+  /* La pizarra ocupa el área del escenario; la barra de controles sigue abajo. */
+  .boardwrap {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+  }
   .err {
     background: rgba(var(--shu-rgb), 0.14);
     border: 1px solid var(--shu);
@@ -167,8 +215,15 @@
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    grid-template-columns: repeat(var(--cols, 3), 1fr);
     gap: 12px;
+    width: 100%;
+    align-self: center;
+    /* Centrado vertical cuando sobra alto (margin auto no rompe el scroll si
+       falta), y ancho limitado para que el mosaico completo QUEPA a lo alto:
+       alto disponible * aspecto (16/10) * columnas / filas. */
+    margin: auto;
+    max-width: min(100%, calc((100dvh - 230px) * 1.6 * var(--cols, 3) / var(--rows, 2)));
   }
   .tile {
     position: relative;
@@ -208,6 +263,25 @@
     border: 1px solid rgba(var(--shu-rgb), 0.35);
   }
   .lbl .mo { color: var(--shu); font-size: 13px; }
+  .lbl .ping {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .lbl .ping i { font-size: 12px; }
+  .live-badge {
+    flex: none;
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #fff;
+    background: #d43d2a;
+    border-radius: 4px;
+    padding: 1.5px 5px;
+    line-height: 1.3;
+  }
   .fsbtn {
     position: absolute;
     top: 10px;

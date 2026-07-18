@@ -86,12 +86,22 @@ export function createNoiseProcessor(gateKey = GATE_DEFAULT) {
     rnnoise = new RnnoiseWorkletNode(ctx, { wasmBinary, maxChannels: 1 });
     dest = ctx.createMediaStreamDestination();
 
+    // TODO MONO, explícito. Los worklets procesan 1 canal (maxChannels: 1);
+    // si el micro llega en estéreo y no se fuerza el downmix, toman SOLO el
+    // canal izquierdo y a esa persona se le oye por un solo oído. Con
+    // channelCount 1 + "explicit", WebAudio mezcla L+R a mono en la entrada,
+    // y el mono de salida se reparte a ambos oídos al reproducir.
+    for (const node of [rnnoise, dest]) {
+      try { node.channelCount = 1; node.channelCountMode = "explicit"; } catch {}
+    }
+
     // Cadena: micro -> RNNoise -> (puerta) -> destino.
     let last = src;
     last.connect(rnnoise);
     last = rnnoise;
     if (gateCfg) {
       gate = new NoiseGateWorkletNode(ctx, { ...gateCfg, maxChannels: 1 });
+      try { gate.channelCount = 1; gate.channelCountMode = "explicit"; } catch {}
       last.connect(gate);
       last = gate;
     }

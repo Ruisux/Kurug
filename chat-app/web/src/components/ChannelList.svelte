@@ -4,7 +4,8 @@
   import {
     voiceState, toggleMute, toggleDeafen, toggleShare, toggleCamera, leaveVoice,
   } from "../lib/voice.js";
-  import { jpLabels, channelKanji } from "../lib/appearance.js";
+  import { jpLabels, channelKanji, decorations } from "../lib/appearance.js";
+  import { pingColor } from "../lib/ui.js";
   import { me } from "../lib/stores.js";
 
   // ¿Este ocupante de la voz está hablando? (yo -> meSpeaking; peers -> su flag).
@@ -17,6 +18,12 @@
 
   export let channels = [];
   export let dms = [];
+  export let dmUnread = {}; // partnerId -> nº de mensajes sin leer
+
+  // Los DMs con mensajes sin leer suben arriba de la sección DIRECTOS.
+  $: sortedDms = [...dms].sort(
+    (a, b) => (dmUnread[b.user.id] || 0) - (dmUnread[a.user.id] || 0),
+  );
   export let dmStatus = {}; // id -> estado en vivo (undefined = desconectado)
   export let currentChannelId = null;
   export let currentDmUserId = null;
@@ -213,6 +220,12 @@
                   <Avatar name={m.display_name} url={m.avatar_url} size={20} />
                 </span>
                 <span class="vm-name">{m.display_name}</span>
+                {#if m.rtt != null}
+                  <span class="vping" style="color:{pingColor(m.rtt)}" title="Latencia">{m.rtt}ms</span>
+                {/if}
+                {#if m.sharing}
+                  <span class="live-badge" title="Está compartiendo pantalla">EN DIRECTO</span>
+                {/if}
                 {#if m.deafened}
                   <i class="ti ti-headphones-off vmic" title="Ensordecido"></i>
                 {:else if m.muted}
@@ -232,14 +245,18 @@
       <!-- Separador de tinta entre Voz y Directos -->
       <div class="ink"><svg viewBox="0 0 200 6" preserveAspectRatio="none" aria-hidden="true"><path d="M2 3 C40 1 70 5 110 3 S180 4 198 2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></div>
       <div class="lbl">Directos{#if $jpLabels}<span class="lk">ダイレクト</span>{/if}</div>
-      {#each dms as d (d.user.id)}
+      {#each sortedDms as d (d.user.id)}
         <button
           class="ch dm"
           class:on={d.user.id === currentDmUserId}
+          class:unread={dmUnread[d.user.id] > 0}
           on:click={() => onSelectDm(d.user)}
         >
           <Avatar name={d.user.display_name} url={d.user.avatar_url} size={20} status={dmStatus[d.user.id] || "offline"} />
           <span class="dmname">{d.user.display_name}</span>
+          {#if dmUnread[d.user.id] > 0}
+            <span class="badge">{dmUnread[d.user.id] > 99 ? "99+" : dmUnread[d.user.id]}</span>
+          {/if}
         </button>
       {/each}
     {/if}
@@ -303,11 +320,13 @@
 
   <!-- Ambientación sumi-e: torii + sol naciente al pie de la columna
        (mismo trazo limpio del mockup). -->
+  {#if $decorations}
   <svg class="amb" style="bottom: {footerH + 10}px" viewBox="0 0 200 120" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
     <circle cx="100" cy="86" r="34" fill="currentColor" />
     <path d="M40 74 H160 M46 82 H154 M60 82 V120 M140 82 V120" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" />
     <path d="M52 74 Q100 62 148 74" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round" />
   </svg>
+  {/if}
 </aside>
 
 {#if userMenu}
@@ -343,7 +362,13 @@
     }
   }
   header {
-    padding: 18px 18px 15px;
+    /* Altura común de cabeceras: la línea separadora queda alineada con las
+       de las demás columnas. */
+    box-sizing: border-box;
+    min-height: var(--header-h);
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
     border-bottom: 1px solid var(--bd);
     position: relative;
     z-index: 1;
@@ -354,8 +379,8 @@
     gap: 11px;
   }
   .seal {
-    width: 38px;
-    height: 38px;
+    width: 36px;
+    height: 36px;
     flex: none;
     border-radius: 12px;
     background: var(--shu);
@@ -543,6 +568,23 @@
     font-size: 12px;
     color: var(--mut);
   }
+  .vping {
+    flex: none;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Badge rojo de quien está compartiendo pantalla (como Discord). */
+  .live-badge {
+    flex: none;
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #fff;
+    background: #d43d2a;
+    border-radius: 4px;
+    padding: 1.5px 5px;
+    line-height: 1.3;
+  }
   .livedot {
     width: 7px;
     height: 7px;
@@ -582,6 +624,8 @@
     flex: 0 0 auto; /* en la columna de Directos no debe crecer en vertical */
   }
   .dmname {
+    flex: 1; /* empuja el badge de no-leídos al borde derecho */
+    text-align: left;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;

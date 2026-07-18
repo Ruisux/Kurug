@@ -96,8 +96,9 @@
     <!-- Volumen LOCAL de la música (cada quien el suyo). -->
     <div class="volrow" title="Tu volumen de la música (solo para ti)">
       <i class="ti {$prefs.botVolume === 0 ? 'ti-volume-3' : 'ti-volume'}"></i>
-      <input type="range" min="0" max="100" step="1" value={$prefs.botVolume}
+      <input type="range" min="0" max="200" step="1" list="music-vol-ticks" value={$prefs.botVolume}
         on:input={(e) => setBotVolume(+e.target.value)} aria-label="Volumen de la música" />
+      <datalist id="music-vol-ticks"><option value="100"></option></datalist>
       <span class="vval">{$prefs.botVolume}%</span>
     </div>
 
@@ -145,10 +146,12 @@
     overflow: hidden;
   }
   header {
+    box-sizing: border-box;
+    min-height: var(--header-h); /* alineada con las demás columnas */
     display: flex;
     align-items: center;
     gap: 9px;
-    padding: 13px 16px;
+    padding: 0 16px;
     border-bottom: 1px solid var(--bd);
   }
   .back {

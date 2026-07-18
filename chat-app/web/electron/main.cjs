@@ -11,6 +11,7 @@ const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
+const { execFile } = require("node:child_process");
 
 // Una sola instancia (evita abrir varias ventanas al reabrir).
 if (!app.requestSingleInstanceLock()) {
@@ -173,6 +174,106 @@ ipcMain.handle("updater:check", async () => {
 ipcMain.handle("updater:install", async () => {
   try { await autoUpdater.downloadUpdate(); } catch (e) {
     mainWindow?.webContents.send("updater:error", String(e));
+  }
+});
+
+// --- Actividad (jugando X / escuchando Y) — solo Windows ---
+// Sondeo cada 20 s de los procesos CON ventana vía PowerShell (sin dependencias
+// nativas). Spotify: su título de ventana es "Artista - Canción" mientras suena
+// y "Spotify"/"Spotify Free" en pausa. Juegos: lista curada de ejecutables.
+// El renderer decide si publica esto en su presencia (toggle de privacidad).
+const GAMES = {
+  "valorant": "VALORANT", "valorant-win64-shipping": "VALORANT",
+  "leagueclient": "League of Legends", "league of legends": "League of Legends",
+  "cs2": "Counter-Strike 2", "dota2": "Dota 2",
+  "fortniteclient-win64-shipping": "Fortnite",
+  "rocketleague": "Rocket League",
+  "minecraft.windows": "Minecraft", "minecraftlauncher": "Minecraft",
+  "gta5": "Grand Theft Auto V", "gta5_enhanced": "Grand Theft Auto V",
+  "r5apex": "Apex Legends", "r5apex_dx12": "Apex Legends",
+  "overwatch": "Overwatch 2", "wow": "World of Warcraft",
+  "hearthstone": "Hearthstone", "osu!": "osu!", "osulazer": "osu!",
+  "eldenring": "Elden Ring", "nightreign": "Elden Ring Nightreign",
+  "terraria": "Terraria", "stardew valley": "Stardew Valley",
+  "stardewvalley": "Stardew Valley",
+  "among us": "Among Us", "amongus": "Among Us",
+  "rustclient": "Rust", "palworld": "Palworld",
+  "helldivers2": "Helldivers 2", "bg3": "Baldur's Gate 3", "bg3_dx11": "Baldur's Gate 3",
+  "cyberpunk2077": "Cyberpunk 2077", "witcher3": "The Witcher 3",
+  "rdr2": "Red Dead Redemption 2", "warframe.x64": "Warframe", "warframe": "Warframe",
+  "destiny2": "Destiny 2", "escapefromtarkov": "Escape from Tarkov",
+  "deadbydaylight-win64-shipping": "Dead by Daylight",
+  "rainbowsix": "Rainbow Six Siege", "rainbowsix_dx11": "Rainbow Six Siege",
+  "robloxplayerbeta": "Roblox", "genshinimpact": "Genshin Impact",
+  "sc2": "StarCraft II", "sc2_x64": "StarCraft II",
+  "factorio": "Factorio", "factorygame-win64-shipping": "Satisfactory",
+  "hollow_knight": "Hollow Knight", "silksong": "Hollow Knight: Silksong",
+  "celeste": "Celeste", "lethal company": "Lethal Company",
+  "lethalcompany": "Lethal Company", "valheim": "Valheim",
+  "7daystodie": "7 Days to Die", "left4dead2": "Left 4 Dead 2",
+  "tf_win64": "Team Fortress 2", "hl2": "Half-Life 2",
+  "javaw": null, // demasiado genérico: nunca asumir que es un juego
+};
+
+let activityTimer = null;
+let activityFails = 0;
+let lastActivity = "";
+
+function detectActivity() {
+  const args = [
+    "-NoProfile", "-Command",
+    "Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object Name,MainWindowTitle | ConvertTo-Json -Compress",
+  ];
+  execFile(
+    "powershell.exe", args,
+    { windowsHide: true, timeout: 10_000, maxBuffer: 4 * 1024 * 1024 },
+    (err, stdout) => {
+      if (err) {
+        // PowerShell bloqueado o colgado: tras 5 fallos seguidos dejamos de
+        // insistir (la actividad simplemente no se detecta en esa máquina).
+        activityFails += 1;
+        if (activityFails >= 5 && activityTimer) {
+          clearInterval(activityTimer);
+          activityTimer = null;
+          updLog("actividad: desactivada tras fallos repetidos de PowerShell");
+        }
+        return;
+      }
+      activityFails = 0;
+      let list;
+      try {
+        list = JSON.parse(stdout || "[]");
+      } catch {
+        return;
+      }
+      if (!Array.isArray(list)) list = [list]; // un solo proceso -> objeto suelto
+      let game = null;
+      let music = null;
+      for (const p of list || []) {
+        const name = String(p?.Name || "").toLowerCase();
+        const title = String(p?.MainWindowTitle || "");
+        if (GAMES[name]) game = { kind: "game", text: GAMES[name] };
+        else if (name === "spotify" && title.includes(" - "))
+          music = { kind: "music", text: title.slice(0, 120) };
+      }
+      const act = game || music || null; // como Discord: el juego manda
+      const key = act ? `${act.kind}|${act.text}` : "";
+      if (key !== lastActivity) {
+        lastActivity = key;
+        mainWindow?.webContents.send("activity:update", act);
+      }
+    },
+  );
+}
+
+ipcMain.on("activity:setEnabled", (_e, on) => {
+  if (activityTimer) clearInterval(activityTimer);
+  activityTimer = null;
+  activityFails = 0;
+  lastActivity = "";
+  if (on && process.platform === "win32") {
+    detectActivity();
+    activityTimer = setInterval(detectActivity, 20_000);
   }
 });
 

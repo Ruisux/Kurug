@@ -1,8 +1,10 @@
 <script>
   import Avatar from "./Avatar.svelte";
   import UserMenu from "./UserMenu.svelte";
+  import ProfileCard from "./ProfileCard.svelte";
   import { statusColor, statusLabel } from "../lib/ui.js";
   import { me } from "../lib/stores.js";
+  import { decorations } from "../lib/appearance.js";
 
   export let online = [];        // usuarios conectados (info en vivo)
   export let allUsers = [];      // todos los miembros (conectados y no)
@@ -14,6 +16,14 @@
     if (u.id === $me.id) return;
     e.preventDefault();
     menu = { user: u, x: e.clientX, y: e.clientY };
+  }
+
+  // Clic IZQUIERDO: tarjeta de perfil (antes abría el DM directamente; el
+  // botón "Enviar mensaje" de la tarjeta sigue haciendo eso).
+  let profile = null; // { user, x, y }
+  function openProfile(e, u) {
+    if (u.id === $me.id) return;
+    profile = { user: u, x: e.clientX, y: e.clientY };
   }
 
   // Mezclamos: para los conectados usamos la info EN VIVO (estado/custom/avatar);
@@ -50,8 +60,8 @@
         class="card"
         style="--ac:{u.accent_color || 'var(--shu)'}"
         disabled={u.id === $me.id}
-        title={u.id === $me.id ? "Eres tú" : `Mensaje a ${u.display_name} · clic derecho para más`}
-        on:click={() => onSelectUser(u)}
+        title={u.id === $me.id ? "Eres tú" : `Perfil de ${u.display_name} · clic derecho para opciones de voz`}
+        on:click={(e) => openProfile(e, u)}
         on:contextmenu={(e) => openMenu(e, u)}
       >
         <span class="av"><Avatar name={u.display_name} url={u.avatar_url} size={42} status={u.status} /></span>
@@ -59,6 +69,11 @@
           <span class="nm">{u.display_name}{#if u.is_admin}<span class="hanko serif" title="Admin">主</span>{/if}</span>
           {#if userVoice[u.id]}
             <span class="voice"><i class="ti ti-volume"></i>{userVoice[u.id]}</span>
+          {:else if u.activity}
+            <span class="act" title={u.activity.text}>
+              <i class="ti {u.activity.kind === 'game' ? 'ti-device-gamepad-2' : 'ti-music'}"></i>
+              {u.activity.kind === "game" ? "Jugando a" : "Escuchando"} {u.activity.text}
+            </span>
           {:else}
             <span class="cs">{subtitle(u)}</span>
           {/if}
@@ -75,8 +90,8 @@
         <button
           class="card off"
           disabled={u.id === $me.id}
-          title={u.id === $me.id ? "Eres tú" : `Mensaje a ${u.display_name} · clic derecho para más`}
-          on:click={() => onSelectUser(u)}
+          title={u.id === $me.id ? "Eres tú" : `Perfil de ${u.display_name} · clic derecho para opciones de voz`}
+          on:click={(e) => openProfile(e, u)}
           on:contextmenu={(e) => openMenu(e, u)}
         >
           <span class="av"><Avatar name={u.display_name} url={u.avatar_url} size={42} /></span>
@@ -89,8 +104,11 @@
     {/if}
   </div>
 
-  <!-- Ambientación sumi-e: rama de sakura al pie. -->
-  <svg class="amb" viewBox="0 0 180 130" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+  <!-- Ambientación sumi-e: rama de sakura ANCLADA a la esquina inferior
+       derecha (xMaxYMax): antes se centraba y en columnas anchas quedaba
+       "flotando" separada del borde. -->
+  {#if $decorations}
+  <svg class="amb" viewBox="0 0 180 130" preserveAspectRatio="xMaxYMax meet" aria-hidden="true">
     <path d="M14 130 C60 104 100 86 158 34" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" />
     <path d="M96 66 C110 55 124 58 130 44" stroke="currentColor" stroke-width="2.2" fill="none" />
     <path d="M64 92 C74 84 86 86 92 74" stroke="currentColor" stroke-width="2.2" fill="none" />
@@ -99,10 +117,22 @@
       <circle cx="120" cy="30" r="4.5" /><circle cx="140" cy="28" r="4" /><circle cx="92" cy="74" r="5" /><circle cx="80" cy="82" r="4.5" />
     </g>
   </svg>
+  {/if}
 </aside>
 
 {#if menu}
   <UserMenu user={menu.user} x={menu.x} y={menu.y} onClose={() => (menu = null)} />
+{/if}
+
+{#if profile}
+  <ProfileCard
+    user={profile.user}
+    x={profile.x}
+    y={profile.y}
+    activity={profile.user.activity || null}
+    onMessage={onSelectUser}
+    onClose={() => (profile = null)}
+  />
 {/if}
 
 <style>
@@ -116,7 +146,9 @@
     overflow: hidden;
   }
   header {
-    padding: 18px 16px 14px;
+    box-sizing: border-box;
+    min-height: var(--header-h); /* alineada con las demás columnas */
+    padding: 0 16px;
     border-bottom: 1px solid var(--bd);
     font-size: 13.5px;
     display: flex;
@@ -148,7 +180,7 @@
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 14px;
+    bottom: 0; /* pegada al borde: con xMaxYMax la rama toca la esquina */
     height: 210px;
     color: var(--tx);
     opacity: 0.12;
@@ -255,6 +287,22 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  /* Actividad: "Jugando a X" / "Escuchando Y" bajo el nombre. */
+  .act {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    font-size: 11px;
+    color: var(--shu);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .act i {
+    flex: none;
+    font-size: 12px;
   }
   .voice {
     display: inline-flex;

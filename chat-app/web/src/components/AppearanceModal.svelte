@@ -3,7 +3,9 @@
   // + personalizado) y el interruptor de lecturas japonesas. El acento se guarda
   // en el perfil (accent_color); el tema y el japonés, en local.
   import { theme, THEMES, setTheme } from "../lib/theme.js";
-  import { jpLabels, toggleJpLabels, ACCENTS, uiScale, UI_SCALES } from "../lib/appearance.js";
+  import {
+    jpLabels, toggleJpLabels, decorations, toggleDecorations, ACCENTS, uiScale, UI_SCALES,
+  } from "../lib/appearance.js";
   import { me } from "../lib/stores.js";
   import { api } from "../lib/api.js";
 
@@ -89,6 +91,15 @@
         <div class="rs">Muestra el kanji junto a canales y secciones (general 一般)</div>
       </div>
       <button class="sw" class:on={$jpLabels} on:click={toggleJpLabels} role="switch" aria-checked={$jpLabels} aria-label="Lecturas japonesas">
+        <span class="knob"></span>
+      </button>
+    </label>
+    <label class="row">
+      <div class="rt">
+        <div class="rl">Decoraciones</div>
+        <div class="rs">La rama de sakura, el torii y las marcas de agua kanji</div>
+      </div>
+      <button class="sw" class:on={$decorations} on:click={toggleDecorations} role="switch" aria-checked={$decorations} aria-label="Decoraciones">
         <span class="knob"></span>
       </button>
     </label>
