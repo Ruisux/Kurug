@@ -7,3 +7,6 @@ __pycache__/
 # Avatares subidos por usuarios (contenido, no código)
 static/avatars/*
 !static/avatars/.gitkeep
+
+# Historial en disco (pizarras, etc.) — datos locales del server
+data/

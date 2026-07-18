@@ -25,12 +25,14 @@
   // Si está en MI sala de voz, la tarjeta incluye su volumen local.
   $: peer = $voiceState.peers[user.id];
 
-  // El snapshot de presencia no siempre trae la bio: completar del servidor.
+  // El snapshot de presencia no siempre trae la bio (y desde el chat solo
+  // llega {id, nombre, avatar}): completar del servidor. El perfil guardado
+  // NO pisa lo vivo (estado/actividad): primero `full`, encima `user`.
   let full = null;
   onMount(async () => {
     try { full = await api.user(user.id); } catch {}
   });
-  $: info = { ...user, ...(full || {}) };
+  $: info = { ...(full || {}), ...user };
 </script>
 
 <div class="backdrop" on:click={onClose} on:contextmenu|preventDefault={onClose} role="presentation"></div>
@@ -40,7 +42,7 @@
     <Avatar name={info.display_name} url={info.avatar_url} size={64} status={info.status} />
     <div class="names">
       <div class="display dn">{info.display_name}</div>
-      <div class="un">@{info.username}</div>
+      {#if info.username}<div class="un">@{info.username}</div>{/if}
     </div>
   </div>
 

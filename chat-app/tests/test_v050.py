@@ -11,14 +11,17 @@ from conftest import register_token
 
 
 @pytest.fixture(autouse=True)
-def fresh_db():
+def fresh_db(tmp_path, monkeypatch):
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    # El historial de pizarras va a un directorio temporal (no a data/boards).
+    monkeypatch.setenv("KURUG_BOARD_DIR", str(tmp_path / "boards"))
     # Los managers viven en memoria: limpiarlos entre tests.
     from app.board import board
     from app.presence import presence
     board.boards.clear()
     board.ui.clear()
+    board._save_tasks.clear()
     presence.info.clear()
     presence.sockets.clear()
     presence.voice.clear()
@@ -114,6 +117,56 @@ def test_board_rejects_garbage(client):
 
     from app.board import board
     assert list(board.boards[7].elements) == ["eeee5555"]
+
+
+def test_board_history_survives_restart(client):
+    """El historial se guarda en disco y un 'reinicio' lo recupera."""
+    import app.board as board_mod
+
+    ta = register_token(client, "alice")
+    with client.websocket_connect(f"/ws/board/7?token={ta}") as wsa:
+        wsa.receive_json()
+        wsa.send_json({"type": "add", "el": _el("aaaa1111")})
+        wsa.send_json({"type": "add", "el": _el("bbbb2222", kind="text", text="hola")})
+        wsa.send_json({"type": "undo"})  # deshacer el texto...
+        _drain_until(wsa, "removed")     # ...y comprobar que NO llega al disco
+
+    # Simular reinicio: escribir ya lo pendiente (debounce) y vaciar la memoria.
+    board_mod.board._write(7)
+    board_mod.board.boards.clear()
+
+    with client.websocket_connect(f"/ws/board/7?token={ta}") as wsa:
+        snap = wsa.receive_json()
+    ids = [e["id"] for e in snap["elements"]]
+    assert ids == ["aaaa1111"]  # el trazo sobrevive; lo deshecho no vuelve
+    # y el undo sigue sabiendo qué es de quién tras recargar
+    assert len(board_mod.board.boards[7].by_user) == 1
+
+
+def test_board_history_expires_after_ttl(client):
+    """Un tablero sin actividad >15 días se descarta al volver a abrirlo."""
+    import json as _json
+    import os
+    import time as _time
+    from pathlib import Path
+
+    ta = register_token(client, "alice")
+    path = Path(os.environ["KURUG_BOARD_DIR"]) / "7.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps({
+        "updated_at": _time.time() - (board_mod_ttl_days() + 1) * 86400,
+        "elements": [dict(_el("aaaa1111"), user_id=1)],
+    }), encoding="utf-8")
+
+    with client.websocket_connect(f"/ws/board/7?token={ta}") as wsa:
+        snap = wsa.receive_json()
+    assert snap["elements"] == []
+    assert not path.exists()
+
+
+def board_mod_ttl_days():
+    from app.board import TTL_DAYS
+    return TTL_DAYS
 
 
 # ---------------- DMs: no-leídos ----------------

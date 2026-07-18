@@ -1,6 +1,7 @@
 <script>
   import Avatar from "./Avatar.svelte";
   import UserMenu from "./UserMenu.svelte";
+  import ProfileCard from "./ProfileCard.svelte";
   import {
     voiceState, toggleMute, toggleDeafen, toggleShare, toggleCamera, leaveVoice,
   } from "../lib/voice.js";
@@ -25,6 +26,7 @@
     (a, b) => (dmUnread[b.user.id] || 0) - (dmUnread[a.user.id] || 0),
   );
   export let dmStatus = {}; // id -> estado en vivo (undefined = desconectado)
+  export let online = [];   // presencia viva (estado/actividad para la tarjeta)
   export let currentChannelId = null;
   export let currentDmUserId = null;
   export let unread = {};
@@ -67,6 +69,22 @@
     e.stopPropagation();
     if (m.id === $me?.id) return; // sobre ti mismo no hay acciones
     userMenu = { user: m, x: e.clientX, y: e.clientY };
+  }
+
+  // Clic IZQUIERDO sobre un ocupante: tarjeta de perfil (como en Miembros).
+  // Quien está en la voz está conectado: su estado vivo es "online".
+  let profile = null; // { user, x, y }
+  function openProfile(e, m) {
+    e.stopPropagation();
+    if (m.id === $me?.id) return;
+    // Completar con la presencia viva (estado real, actividad); quien está en
+    // la voz está conectado, así que "online" es el mínimo garantizado.
+    const live = online.find((u) => u.id === m.id);
+    profile = {
+      user: { status: "online", ...m, ...(live || {}) },
+      x: e.clientX ?? 200, // teclado (Enter): sin puntero, posición razonable
+      y: e.clientY ?? 200,
+    };
   }
 
   let menu = null; // { channel, x, y }
@@ -211,18 +229,17 @@
             {#each voiceMembers[c.id] as m (m.id)}
               <span
                 class="vm"
-                title="{m.display_name} · clic derecho para opciones"
+                title="{m.display_name} · clic para ver su perfil · clic derecho para opciones"
                 role="button"
                 tabindex="-1"
+                on:click={(e) => openProfile(e, m)}
+                on:keydown={(e) => e.key === "Enter" && openProfile(e, m)}
                 on:contextmenu={(e) => openUserMenu(e, m)}
               >
                 <span class="vmav" class:sp={memberSpeaking(m)}>
                   <Avatar name={m.display_name} url={m.avatar_url} size={20} />
                 </span>
                 <span class="vm-name">{m.display_name}</span>
-                {#if m.rtt != null}
-                  <span class="vping" style="color:{pingColor(m.rtt)}" title="Latencia">{m.rtt}ms</span>
-                {/if}
                 {#if m.sharing}
                   <span class="live-badge" title="Está compartiendo pantalla">EN DIRECTO</span>
                 {/if}
@@ -267,13 +284,20 @@
     <!-- Barra de voz fija: qué canal + controles, siempre visible. -->
     {#if $voiceState.active}
       <div class="vbar">
-        <button class="vlink" on:click={() => onSelectVoice($voiceState.channelId)} title="Abrir la sala de voz">
-          <span class="vsig" class:sp={$voiceState.meSpeaking && !$voiceState.muted}><i class="ti ti-volume"></i></span>
-          <span class="vtxt">
-            <span class="vst">Voz conectada</span>
-            <span class="vcn">{activeVoiceName}</span>
-          </span>
-        </button>
+        <div class="vtop">
+          <button class="vlink" on:click={() => onSelectVoice($voiceState.channelId)} title="Abrir la sala de voz">
+            <span class="vsig" class:sp={$voiceState.meSpeaking && !$voiceState.muted}><i class="ti ti-volume"></i></span>
+            <span class="vtxt">
+              <span class="vst">Voz conectada</span>
+              <span class="vcn">{activeVoiceName}</span>
+            </span>
+          </button>
+          {#if $voiceState.myRtt != null}
+            <span class="vping" style="--pc:{pingColor($voiceState.myRtt)}" title="Tu latencia con el servidor de voz">
+              <i class="ti ti-activity-heartbeat"></i>{$voiceState.myRtt}<small>ms</small>
+            </span>
+          {/if}
+        </div>
         <div class="vbtns">
           <button class="vb" class:on={$voiceState.muted} on:click={toggleMute} title="Silenciar" aria-label="Silenciar">
             <i class="ti {$voiceState.muted ? 'ti-microphone-off' : 'ti-microphone'}"></i>
@@ -331,6 +355,17 @@
 
 {#if userMenu}
   <UserMenu user={userMenu.user} x={userMenu.x} y={userMenu.y} onClose={() => (userMenu = null)} />
+{/if}
+
+{#if profile}
+  <ProfileCard
+    user={profile.user}
+    x={profile.x}
+    y={profile.y}
+    activity={profile.user.activity || null}
+    onMessage={onSelectDm}
+    onClose={() => (profile = null)}
+  />
 {/if}
 
 {#if menu}
@@ -568,10 +603,30 @@
     font-size: 12px;
     color: var(--mut);
   }
+  /* Pill de latencia propia en la barra "Voz conectada". */
   .vping {
     flex: none;
-    font-size: 10px;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
+    font-size: 11.5px;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
+    color: var(--pc, var(--mut));
+    background: color-mix(in srgb, var(--pc, var(--mut)) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--pc, var(--mut)) 35%, transparent);
+    border-radius: 999px;
+    padding: 2.5px 9px;
+    line-height: 1.2;
+  }
+  .vping i {
+    font-size: 12px;
+    align-self: center;
+  }
+  .vping small {
+    font-size: 9px;
+    font-weight: 500;
+    opacity: 0.8;
   }
   /* Badge rojo de quien está compartiendo pantalla (como Discord). */
   .live-badge {
@@ -671,10 +726,17 @@
     flex-direction: column;
     gap: 8px;
   }
+  .vtop {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
   .vlink {
     display: flex;
     align-items: center;
     gap: 9px;
+    flex: 1;
+    min-width: 0;
     background: none;
     border: none;
     padding: 0;

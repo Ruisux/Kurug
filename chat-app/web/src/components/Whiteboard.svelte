@@ -25,6 +25,7 @@
   ];
 
   let svgEl;
+  let wbEl;
   let tool = "pen";
   let color = COLORS[0];
   let width = 4;
@@ -38,6 +39,14 @@
   // Editor de texto flotante
   let textEdit = null; // { x, y, id (si edita uno existente), value }
   let textInput;
+
+  // Enfocar al montar (acción): el input se crea en el evento `click`, cuando
+  // el navegador YA terminó el manejo de foco del gesto. Si se creara en
+  // `pointerdown`, el `mousedown` del mismo click lo desenfocaría al instante
+  // (el SVG no es enfocable) y el blur lo cerraría vacío: "no funciona".
+  function autofocus(node) {
+    node.focus();
+  }
 
   onMount(() => connectBoard(channelId));
   onDestroy(() => {
@@ -73,12 +82,7 @@
       eraseAt(e);
       return;
     }
-    if (tool === "text") {
-      const [x, y] = toLogical(e);
-      textEdit = { x, y, id: null, value: "" };
-      queueMicrotask(() => textInput?.focus());
-      return;
-    }
+    if (tool === "text") return; // el texto se coloca en `click` (ver canvasClick)
     const pt = toLogical(e);
     if (tool === "pen") {
       const el = {
@@ -118,6 +122,15 @@
     if (stroke) {
       clearInterval(strokeTimer);
       strokeTimer = 0;
+      // Un toque sin arrastre = un punto: con un solo vértice la polilínea no
+      // pinta nada, así que se añade un vecino (el linecap redondo hace el punto).
+      if (stroke.el.points.length === 1) {
+        const [x, y] = stroke.el.points[0];
+        const pt = [Math.min(W, x + 1), y];
+        stroke.el.points.push(pt);
+        stroke.pending.push(pt);
+        boardOps.touchLocal();
+      }
       flushStroke();
       stroke = null;
     }
@@ -134,6 +147,14 @@
     }
   }
 
+  // Colocar el editor de texto. Va en `click` (no en pointerdown) a propósito:
+  // en ese momento el navegador ya no va a mover el foco y el input sobrevive.
+  function canvasClick(e) {
+    if (tool !== "text" || textEdit) return;
+    const [x, y] = toLogical(e);
+    textEdit = { x, y, id: null, value: "" };
+  }
+
   function dblClick(e) {
     // Doble clic sobre un texto PROPIO: editarlo.
     const hit = e.target.closest?.("[data-id]");
@@ -141,7 +162,6 @@
     const el = elements.find((x) => x.id === hit.dataset.id);
     if (el && el.kind === "text" && el.user_id === $me.id) {
       textEdit = { x: el.points[0][0], y: el.points[0][1], id: el.id, value: el.text };
-      queueMicrotask(() => textInput?.focus());
     }
   }
 
@@ -165,6 +185,54 @@
 
   function clearAll() {
     if (confirm("¿Limpiar TODA la pizarra para todos?")) boardOps.clear();
+  }
+
+  // Exportar el flujo como imagen PNG: se serializa el SVG tal cual (mismo
+  // viewBox lógico) y se rasteriza a 1920×1080 sobre el color de fondo real.
+  let exporting = false;
+  async function exportPng() {
+    if (exporting || !svgEl) return;
+    exporting = true;
+    try {
+      const clone = svgEl.cloneNode(true);
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("width", W);
+      clone.setAttribute("height", H);
+      // Los estilos del componente no viajan en la serialización: fijar la
+      // fuente de los textos y quitar las zonas de impacto invisibles.
+      clone.style.fontFamily = getComputedStyle(svgEl).fontFamily;
+      for (const hit of clone.querySelectorAll(".hit")) hit.remove();
+      const svgText = new XMLSerializer().serializeToString(clone);
+      const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }));
+      try {
+        const img = new Image();
+        await new Promise((ok, bad) => {
+          img.onload = ok;
+          img.onerror = bad;
+          img.src = url;
+        });
+        const canvas = document.createElement("canvas");
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = getComputedStyle(wbEl).backgroundColor || "#141414";
+        ctx.fillRect(0, 0, W, H);
+        ctx.drawImage(img, 0, 0, W, H);
+        const blob = await new Promise((ok) => canvas.toBlob(ok, "image/png"));
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        const stamp = new Date().toISOString().slice(0, 16).replace("T", "-").replace(":", "");
+        a.download = `pizarra-${stamp}.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch {
+      alert("No se pudo exportar la pizarra.");
+    } finally {
+      exporting = false;
+    }
   }
 
   // ---- geometría de render ----
@@ -199,7 +267,7 @@
   }
 </script>
 
-<div class="wb">
+<div class="wb" bind:this={wbEl}>
   <div class="toolbar">
     {#each TOOLS as t (t.id)}
       <button class="tb" class:on={tool === t.id} title={t.label} aria-label={t.label} on:click={() => (tool = t.id)}>
@@ -218,12 +286,13 @@
     {/each}
     <span class="sep"></span>
     <button class="tb" on:click={boardOps.undo} title="Deshacer (lo tuyo)" aria-label="Deshacer"><i class="ti ti-arrow-back-up"></i></button>
+    <button class="tb" on:click={exportPng} disabled={exporting} title="Exportar como imagen (PNG)" aria-label="Exportar como imagen"><i class="ti ti-download"></i></button>
     <button class="tb" on:click={clearAll} title="Limpiar todo" aria-label="Limpiar todo"><i class="ti ti-trash"></i></button>
     <span class="spacer"></span>
     <button class="tb close" on:click={onClose} title="Cerrar pizarra" aria-label="Cerrar pizarra"><i class="ti ti-x"></i></button>
   </div>
 
-  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions a11y-click-events-have-key-events -->
   <svg
     bind:this={svgEl}
     class="canvas"
@@ -235,6 +304,7 @@
     on:pointermove={pointerMove}
     on:pointerup={pointerUp}
     on:pointerleave={pointerUp}
+    on:click={canvasClick}
     on:dblclick={dblClick}
   >
     {#each elements as el (el.id)}
@@ -280,7 +350,7 @@
 
   {#if textEdit}
     <input
-      bind:this={textInput}
+      use:autofocus
       class="textedit"
       style={textEditStyle(textEdit)}
       bind:value={textEdit.value}
@@ -379,11 +449,11 @@
   .canvas.erasing .el :global(.hit) {
     pointer-events: stroke;
   }
-  .canvas.erasing .el text {
-    pointer-events: all;
-  }
   .canvas text {
-    pointer-events: none;
+    /* Reciben eventos SIEMPRE: sin esto el doble clic para editar tu texto
+       (y la goma) no encuentran el elemento. Dibujar encima sigue funcionando
+       porque el trazo usa coordenadas del puntero, no el target. */
+    pointer-events: all;
     user-select: none;
     font-family: inherit;
   }

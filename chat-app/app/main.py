@@ -4,8 +4,9 @@ Punto de entrada de la aplicación.
 Crea la app de FastAPI y conecta los routers. El esquema lo gestiona Alembic.
 Para correr:  uvicorn app.main:app --reload
 """
+import asyncio
 import secrets
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +18,7 @@ from .config import settings
 from .database import SessionLocal
 from .models import User, Channel
 from .security import hash_password
+from .board import board as board_manager
 from .routers import auth, channels, ws, users, avatars, presence, dms, music, voice, uploads, gifs, board
 
 
@@ -40,7 +42,13 @@ async def lifespan(app: FastAPI):
         db.rollback()
     finally:
         db.close()
+    # Historial de pizarras: purga diaria de tableros con >15 días sin uso.
+    purge_task = asyncio.create_task(board_manager.purge_loop())
     yield
+    purge_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await purge_task
+    await board_manager.flush()  # apagado ordenado: no perder los últimos trazos
 
 
 # El esquema lo gestiona Alembic (`alembic upgrade head`), no la app.

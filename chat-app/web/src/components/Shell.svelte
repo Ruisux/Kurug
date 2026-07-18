@@ -615,6 +615,7 @@
       dms={dmConvos}
       {dmStatus}
       isAdmin={$me.is_admin}
+      {online}
       voiceMembers={voiceByChannel}
       onSelectChannel={openChannel}
       onSelectVoice={selectVoice}
@@ -632,6 +633,7 @@
     {:else}
       <ChatView
         {header} channelId={currentChannelId} dmUserId={currentDmUserId} {messages} {allUsers}
+        {online} onOpenDm={openDm}
         typing={Object.values(typingUsers).map((t) => t.name)} onTyping={sendTyping}
         {onSend} {onDelete} {onEdit} {onReact} {onPin} onBack={backToList}
       />

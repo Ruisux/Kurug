@@ -1,6 +1,7 @@
 <script>
   import { tick, onMount } from "svelte";
   import Avatar from "./Avatar.svelte";
+  import ProfileCard from "./ProfileCard.svelte";
   import VoicePanel from "./VoicePanel.svelte";
   import EmojiPicker from "./EmojiPicker.svelte";
   import GifPicker from "./GifPicker.svelte";
@@ -22,6 +23,8 @@
   export let onPin = () => {};
   export let onBack = () => {};
   export let allUsers = []; // para resolver quién reaccionó (tooltip)
+  export let online = [];   // presencia en vivo (estado/actividad de la tarjeta)
+  export let onOpenDm = () => {}; // "Enviar mensaje" de la tarjeta de perfil
   export let typing = [];   // nombres de quienes están escribiendo aquí
   export let onTyping = () => {}; // avisar de que YO estoy escribiendo
 
@@ -55,6 +58,26 @@
     if (authorKey(m) !== authorKey(prev)) return false;
     return new Date(m.created_at) - new Date(prev.created_at) < GROUP_MS;
   }
+  // --- Tarjeta de perfil desde el chat: clic en el avatar o el nombre. ---
+  $: liveById = new Map(online.map((u) => [u.id, u]));
+  let profile = null; // { user, x, y }
+  function openProfile(e, m) {
+    // Perfil base (allUsers) + presencia viva (online) + lo que trae el mensaje.
+    const base = m.userId != null ? userById.get(m.userId) : userByName.get(m.user);
+    const id = base?.id ?? m.userId;
+    if (id == null) return; // sin id no hay perfil que abrir
+    const live = liveById.get(id);
+    const user = {
+      display_name: m.name,
+      avatar_url: m.avatar,
+      ...(base || {}),
+      ...(live || {}),
+      id,
+      status: live ? live.status : "offline",
+    };
+    profile = { user, x: e.clientX, y: e.clientY };
+  }
+
   function reactedBy(r) {
     const names = (r.users || []).map((id) =>
       id === $me.id ? "tú" : userById.get(id)?.display_name || "alguien",
@@ -570,7 +593,9 @@
           <!-- Hueco del avatar: la hora aparece solo al pasar el mouse. -->
           <span class="gutter"><span class="gtime">{formatTime(m.created_at)}</span></span>
         {:else}
-          <Avatar name={m.name} url={m.avatar} size={40} />
+          <button class="avlink" title="Ver perfil de {m.name}" on:click={(e) => openProfile(e, m)}>
+            <Avatar name={m.name} url={m.avatar} size={40} />
+          </button>
         {/if}
         <div class="body">
           {#if m.replyTo}
@@ -582,7 +607,7 @@
           {/if}
           {#if !isGrouped(m, i)}
           <div class="meta">
-            <span class="author" class:mine={m.mine} style={nameColor(m) ? `color: ${nameColor(m)}` : ""}>{m.name}</span>
+            <button class="author" class:mine={m.mine} style={nameColor(m) ? `color: ${nameColor(m)}` : ""} title="Ver perfil de {m.name}" on:click={(e) => openProfile(e, m)}>{m.name}</button>
             <span class="time">{formatTime(m.created_at)}</span>
             {#if m.edited}<span class="edited">(editado)</span>{/if}
             {#if m.pinned}<span class="pinmark"><i class="ti ti-pin"></i> fijado</span>{/if}
@@ -763,6 +788,17 @@
     </button>
   </div>
 </section>
+
+{#if profile}
+  <ProfileCard
+    user={profile.user}
+    x={profile.x}
+    y={profile.y}
+    activity={profile.user.activity || null}
+    onMessage={onOpenDm}
+    onClose={() => (profile = null)}
+  />
+{/if}
 
 {#if lightbox}
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
@@ -1034,9 +1070,27 @@
   .author {
     font-size: 15.5px;
     font-weight: 600;
+    /* Es un botón (abre la tarjeta de perfil) con pinta de texto normal. */
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .author:hover {
+    text-decoration: underline;
   }
   .author.mine {
     color: var(--shu);
+  }
+  .avlink {
+    background: none;
+    border: none;
+    padding: 0;
+    flex: none;
+    cursor: pointer;
+    align-self: flex-start;
   }
   .time {
     font-size: 12px;

@@ -23,7 +23,13 @@
   let profile = null; // { user, x, y }
   function openProfile(e, u) {
     if (u.id === $me.id) return;
-    profile = { user: u, x: e.clientX, y: e.clientY };
+    // El perfil guardado trae un `status` de preferencia; si NO está conectado,
+    // la tarjeta debe decir "Desconectado" (no ese estado guardado).
+    profile = {
+      user: u.connected ? u : { ...u, status: "offline" },
+      x: e.clientX,
+      y: e.clientY,
+    };
   }
 
   // Mezclamos: para los conectados usamos la info EN VIVO (estado/custom/avatar);
