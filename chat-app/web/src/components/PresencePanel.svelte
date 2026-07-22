@@ -44,10 +44,9 @@
   $: connected = members.filter((m) => m.connected).sort(byName);
   $: offline = members.filter((m) => !m.connected).sort(byName);
 
-  // Línea secundaria de la tarjeta: voz > estado personalizado > etiqueta de estado.
+  // Última línea de reserva: solo cuando no hay chip de voz, ni actividad, ni
+  // estado personalizado que mostrar.
   function subtitle(u) {
-    if (userVoice[u.id]) return null; // la voz se muestra como chip aparte
-    if (u.connected && u.custom_status) return u.custom_status;
     return u.connected ? statusLabel(u.status) : "Desconectado";
   }
 </script>
@@ -73,14 +72,19 @@
         <span class="av"><Avatar name={u.display_name} url={u.avatar_url} size={42} status={u.status} /></span>
         <span class="info">
           <span class="nm">{u.display_name}{#if u.is_admin}<span class="hanko serif" title="Admin">主</span>{/if}</span>
+          <!-- La sala de voz no debe TAPAR el estado: el chip va aparte y
+               debajo sigue viéndose la actividad o el estado personalizado. -->
           {#if userVoice[u.id]}
             <span class="voice"><i class="ti ti-volume"></i>{userVoice[u.id]}</span>
-          {:else if u.activity}
+          {/if}
+          {#if u.activity}
             <span class="act" title={u.activity.text}>
               <i class="ti {u.activity.kind === 'game' ? 'ti-device-gamepad-2' : 'ti-music'}"></i>
               {u.activity.kind === "game" ? "Jugando a" : "Escuchando"} {u.activity.text}
             </span>
-          {:else}
+          {:else if u.connected && u.custom_status}
+            <span class="cs">{u.custom_status}</span>
+          {:else if !userVoice[u.id]}
             <span class="cs">{subtitle(u)}</span>
           {/if}
         </span>

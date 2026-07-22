@@ -47,6 +47,36 @@ export function formatTime(iso) {
   }
 }
 
+// --- Paneles flotantes y escala de la interfaz ---
+//
+// La interfaz entera se agranda con `zoom` en <body> (--ui-zoom, app.css).
+// OJO: un `position: fixed` DENTRO de esa caja escalada resuelve su left/top
+// en las unidades YA escaladas — con zoom 1.35, `left: 1000px` aterriza en el
+// píxel 1350 de la pantalla. Los eventos (clientX/clientY) y
+// getBoundingClientRect(), en cambio, hablan siempre en píxeles reales de
+// viewport. Sin traducir entre ambos mundos, los menús y tarjetas se van fuera
+// de la pantalla en cuanto la interfaz no está en tamaño "Normal".
+export function uiZoom() {
+  try {
+    const z = parseFloat(getComputedStyle(document.body).zoom);
+    if (z > 0) return z;
+  } catch {}
+  return 1;
+}
+
+// Coloca un panel de w×h junto a (x, y) —coordenadas de viewport, tal cual
+// llegan de un evento— sin que se salga de la pantalla. Devuelve {left, top}
+// en las unidades que el CSS del elemento entiende.
+export function anchorFixed(x, y, w, h, margin = 8) {
+  const z = uiZoom();
+  const vw = window.innerWidth / z;
+  const vh = window.innerHeight / z;
+  return {
+    left: Math.max(margin, Math.min(x / z, vw - w - margin)),
+    top: Math.max(margin, Math.min(y / z, vh - h - margin)),
+  };
+}
+
 // Color del badge de ping: verde fluido, ámbar regular, rojo malo, gris sin
 // dato. Si LiveKit reporta calidad "poor"/"lost" se fuerza el rojo aunque el
 // último ping publicado fuera bueno (cubre "se le cayó la red hace un momento").

@@ -359,8 +359,8 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: min(440px, 92vw);
-    max-height: 88vh;
+    width: min(440px, calc(92 * var(--vw)));
+    max-height: calc(88 * var(--vh));
     overflow-y: auto;
     background: var(--pan);
     border: 1px solid var(--bd2);

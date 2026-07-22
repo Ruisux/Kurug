@@ -6,8 +6,18 @@
     voiceState, toggleMute, toggleDeafen, toggleShare, toggleCamera, leaveVoice,
   } from "../lib/voice.js";
   import { jpLabels, channelKanji, decorations } from "../lib/appearance.js";
-  import { pingColor } from "../lib/ui.js";
+  import { pingColor, anchorFixed } from "../lib/ui.js";
   import { me } from "../lib/stores.js";
+
+  // Estado (en línea / ausente / no molestar) de un ocupante de la voz: se
+  // toma de la presencia viva. Quien está en la sala está conectado, así que
+  // el mínimo es "online" (nunca el gris de desconectado).
+  function memberStatus(m) {
+    return online.find((u) => u.id === m.id)?.status || "online";
+  }
+  function memberCustom(m) {
+    return online.find((u) => u.id === m.id)?.custom_status || null;
+  }
 
   // ¿Este ocupante de la voz está hablando? (yo -> meSpeaking; peers -> su flag).
   function memberSpeaking(m) {
@@ -98,8 +108,7 @@
     menu = null;
     if (confirm(`¿Borrar el canal ${c.kind === "voice" ? "🔊" : "#"}${c.name} y todos sus mensajes?`)) onDeleteChannel(c.id);
   }
-  $: menuLeft = menu ? Math.min(menu.x, window.innerWidth - 210) : 0;
-  $: menuTop = menu ? Math.min(menu.y, window.innerHeight - 110) : 0;
+  $: menuPos = menu ? anchorFixed(menu.x, menu.y, 210, 110) : { left: 0, top: 0 };
 
   // --- Arrastrar para reordenar (dentro de su misma sección) ---
   let dragId = null;
@@ -229,7 +238,7 @@
             {#each voiceMembers[c.id] as m (m.id)}
               <span
                 class="vm"
-                title="{m.display_name} · clic para ver su perfil · clic derecho para opciones"
+                title="{m.display_name}{memberCustom(m) ? ` · ${memberCustom(m)}` : ''} · clic para ver su perfil · clic derecho para opciones"
                 role="button"
                 tabindex="-1"
                 on:click={(e) => openProfile(e, m)}
@@ -237,7 +246,7 @@
                 on:contextmenu={(e) => openUserMenu(e, m)}
               >
                 <span class="vmav" class:sp={memberSpeaking(m)}>
-                  <Avatar name={m.display_name} url={m.avatar_url} size={20} />
+                  <Avatar name={m.display_name} url={m.avatar_url} size={20} status={memberStatus(m)} />
                 </span>
                 <span class="vm-name">{m.display_name}</span>
                 {#if m.sharing}
@@ -370,7 +379,7 @@
 
 {#if menu}
   <div class="cm-backdrop" on:click={() => (menu = null)} on:contextmenu|preventDefault={() => (menu = null)} role="presentation"></div>
-  <div class="cmenu" style="left:{menuLeft}px; top:{menuTop}px" role="menu">
+  <div class="cmenu" style="left:{menuPos.left}px; top:{menuPos.top}px" role="menu">
     <div class="cm-head">{menu.channel.kind === "voice" ? "🔊" : "#"} {menu.channel.name}</div>
     <button class="cm-item danger" on:click={delFromMenu} role="menuitem">
       <i class="ti ti-trash"></i> Borrar canal

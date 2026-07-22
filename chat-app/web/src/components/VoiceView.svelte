@@ -63,6 +63,7 @@
       camera: st.cameraOn ? localCameraStream() : null, hasCamera: st.cameraOn,
       speaking: st.meSpeaking && !st.muted, micMuted: st.muted, deafened: st.deafened,
       sharing: st.sharing, rtt: st.myRtt, quality: null,
+      status: $me.status || "online", custom_status: $me.custom_status || null,
     },
     ...peers.map((p) => ({
       id: p.id, name: p.name, avatar: p.avatar, self: false,
@@ -73,6 +74,8 @@
       sharing: p.hasScreen,
       rtt: voiceFlags[p.id]?.rtt ?? null, // su ping, publicado por presencia
       quality: p.quality,
+      status: voiceFlags[p.id]?.status || "online",
+      custom_status: voiceFlags[p.id]?.custom_status || null,
     })),
   ];
 </script>
@@ -115,7 +118,10 @@
           {#if p.hasCamera && p.camera}
             <video use:srcObject={p.camera} autoplay playsinline muted={p.self}></video>
           {:else}
-            <div class="mid"><Avatar name={p.name} url={p.avatar} size={82} /></div>
+            <div class="mid">
+              <Avatar name={p.name} url={p.avatar} size={82} status={p.status} />
+              {#if p.custom_status}<span class="cst" title={p.custom_status}>{p.custom_status}</span>{/if}
+            </div>
           {/if}
           <span class="lbl">
             {p.name}{#if p.self}&nbsp;(tú){/if}
@@ -223,7 +229,7 @@
        falta), y ancho limitado para que el mosaico completo QUEPA a lo alto:
        alto disponible * aspecto (16/10) * columnas / filas. */
     margin: auto;
-    max-width: min(100%, calc((100dvh - 230px) * 1.6 * var(--cols, 3) / var(--rows, 2)));
+    max-width: min(100%, calc((100 * var(--dvh) - 230px) * 1.6 * var(--cols, 3) / var(--rows, 2)));
   }
   .tile {
     position: relative;
@@ -245,7 +251,23 @@
     border-color: var(--on, #6bbf59);
     box-shadow: 0 0 0 3px rgba(107, 191, 89, 0.4);
   }
-  .mid { display: flex; align-items: center; justify-content: center; }
+  .mid {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+  }
+  /* Estado personalizado bajo el avatar del recuadro. */
+  .mid .cst {
+    max-width: 90%;
+    font-size: 11.5px;
+    color: var(--mut);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .lbl {
     position: absolute;
     left: 12px;

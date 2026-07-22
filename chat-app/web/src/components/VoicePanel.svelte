@@ -14,7 +14,12 @@
   import { screenPicker } from "../lib/desktop.js";
   import { pingColor } from "../lib/ui.js";
 
+  export let online = []; // presencia viva: el punto de estado de cada chip
+
   const presetEntries = Object.entries(SCREEN_PRESETS);
+
+  // Quien está en la voz está conectado: a falta de dato vivo, "online".
+  $: statusById = new Map(online.map((u) => [u.id, u.status || "online"]));
   // En Electron la calidad se elige en el selector de pantalla propio; aquí solo
   // se muestra para el picker del navegador (web/Tauri).
   const showQualityBar = !screenPicker.supported;
@@ -88,7 +93,7 @@
 
       <div class="chips">
         <span class="chip" class:muted={$voiceState.muted} class:speaking={$voiceState.meSpeaking && !$voiceState.muted}>
-          <Avatar name={$me.display_name} url={$me.avatar_url} size={22} />
+          <Avatar name={$me.display_name} url={$me.avatar_url} size={22} status={$me.status || "online"} />
           tú
           {#if $voiceState.sharing}<span class="live-badge">EN DIRECTO</span>{/if}
           {#if $voiceState.deafened}<i class="ti ti-headphones-off"></i>
@@ -96,7 +101,7 @@
         </span>
         {#each peers as p (p.id)}
           <span class="chip" class:speaking={p.speaking}>
-            <Avatar name={p.name} url={p.avatar} size={22} />
+            <Avatar name={p.name} url={p.avatar} size={22} status={statusById.get(p.id) || "online"} />
             {p.name}
             {#if p.hasVideo}<span class="live-badge">EN DIRECTO</span>{/if}
           </span>

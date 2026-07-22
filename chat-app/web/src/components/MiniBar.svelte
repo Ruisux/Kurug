@@ -70,7 +70,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    max-width: min(92vw, 480px);
+    max-width: min(calc(92 * var(--vw)), 480px);
     background: var(--pan);
     border: 1px solid var(--bd2);
     border-radius: 14px;
@@ -215,7 +215,7 @@
   .mini.vv {
     /* El mínimo evita que en ventanas estrechas el cálculo se vuelva negativo
        y la barra "desaparezca" aplastada. */
-    max-width: clamp(220px, 92vw - 580px, 480px);
+    max-width: clamp(220px, calc(92 * var(--vw) - 580px), 480px);
   }
 
   /* En móvil ahorramos espacio: ocultamos el slider (queda en la sala). */
@@ -230,7 +230,7 @@
       bottom: 78px;
     }
     .mini.vv {
-      max-width: min(92vw, 480px);
+      max-width: min(calc(92 * var(--vw)), 480px);
     }
   }
 </style>

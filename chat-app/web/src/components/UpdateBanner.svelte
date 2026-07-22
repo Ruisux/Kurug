@@ -47,7 +47,7 @@
     display: flex;
     align-items: center;
     gap: 11px;
-    max-width: min(94vw, 460px);
+    max-width: min(calc(94 * var(--vw)), 460px);
     background: var(--pan);
     border: 1px solid var(--shu);
     border-radius: 12px;

@@ -1,6 +1,7 @@
 <script>
   import { voiceState, setPeerVolume, setPeerMuted, kickPeer } from "../lib/voice.js";
   import { me } from "../lib/stores.js";
+  import { anchorFixed } from "../lib/ui.js";
 
   export let user;
   export let x = 0;
@@ -11,9 +12,10 @@
   $: peer = $voiceState.peers[user.id];
   $: inVoice = !!peer;
 
-  // Posición acotada a la ventana.
-  $: left = Math.min(x, window.innerWidth - 240);
-  $: top = Math.min(y, window.innerHeight - 200);
+  // Posición acotada a la ventana (traducida a las unidades de la interfaz
+  // escalada; ver anchorFixed).
+  let menuH = 200;
+  $: pos = anchorFixed(x, y, 232, menuH);
 
   function toggleMute() {
     if (peer) setPeerMuted(user.id, !peer.localMuted);
@@ -28,7 +30,7 @@
 </script>
 
 <div class="backdrop" on:click={onClose} on:contextmenu|preventDefault={onClose} role="presentation"></div>
-<div class="menu" style="left:{left}px; top:{top}px" role="menu">
+<div class="menu" bind:clientHeight={menuH} style="left:{pos.left}px; top:{pos.top}px" role="menu">
   <div class="head">
     <span class="display">{user.display_name}</span>
   </div>

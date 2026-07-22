@@ -6,6 +6,7 @@
   import { onMount, onDestroy } from "svelte";
   import { me } from "../lib/stores.js";
   import { boardState, boardOps, connectBoard, disconnectBoard, newElementId } from "../lib/board.js";
+  import { uiZoom } from "../lib/ui.js";
 
   export let channelId;
   export let onClose = () => {};
@@ -257,12 +258,16 @@
   function fontSize(w) {
     return 18 + w * 5; // el grosor elegido también dimensiona el texto
   }
-  // Posición del input de texto en píxeles de pantalla.
+  // Posición del input de texto. El rect del lienzo viene en píxeles de
+  // viewport, pero el input es `fixed` DENTRO de la interfaz escalada: hay que
+  // dividir por el zoom o aparece desplazado (o fuera de la pantalla) en cuanto
+  // el tamaño de interfaz no es "Normal".
   function textEditStyle(te) {
     if (!svgEl) return "";
+    const z = uiZoom();
     const r = svgEl.getBoundingClientRect();
-    const left = r.left + (te.x / W) * r.width;
-    const top = r.top + (te.y / H) * r.height;
+    const left = (r.left + (te.x / W) * r.width) / z;
+    const top = (r.top + (te.y / H) * r.height) / z;
     return `left:${left}px; top:${top}px; color:${color};`;
   }
 </script>

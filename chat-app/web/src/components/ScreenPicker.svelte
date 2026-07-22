@@ -116,8 +116,8 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: min(660px, 94vw);
-    max-height: 86vh;
+    width: min(660px, calc(94 * var(--vw)));
+    max-height: calc(86 * var(--vh));
     display: flex;
     flex-direction: column;
     background: var(--pan);

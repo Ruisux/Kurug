@@ -5,7 +5,7 @@
   import VoicePanel from "./VoicePanel.svelte";
   import EmojiPicker from "./EmojiPicker.svelte";
   import GifPicker from "./GifPicker.svelte";
-  import { formatTime } from "../lib/ui.js";
+  import { formatTime, uiZoom } from "../lib/ui.js";
   import { jpLabels, channelKanji, decorations } from "../lib/appearance.js";
   import { me } from "../lib/stores.js";
   import { api } from "../lib/api.js";
@@ -99,14 +99,19 @@
       pickerFor = null;
       return;
     }
+    // El rect llega en píxeles de viewport y el panel es `fixed` dentro de la
+    // interfaz escalada: se divide por el zoom o se abriría fuera de pantalla.
+    const z = uiZoom();
     const r = ev.currentTarget.getBoundingClientRect();
-    let left = r.right - PICKER_W;
+    const vw = window.innerWidth / z;
+    const vh = window.innerHeight / z;
+    let left = r.right / z - PICKER_W;
     if (left < 8) left = 8;
-    const maxLeft = window.innerWidth - PICKER_W - 8;
+    const maxLeft = vw - PICKER_W - 8;
     if (left > maxLeft) left = maxLeft;
     // Preferimos abrir hacia arriba; si no hay sitio, hacia abajo.
-    let top = r.top - PICKER_H - 6;
-    if (top < 8) top = Math.min(r.bottom + 6, window.innerHeight - PICKER_H - 8);
+    let top = r.top / z - PICKER_H - 6;
+    if (top < 8) top = Math.min(r.bottom / z + 6, vh - PICKER_H - 8);
     if (top < 8) top = 8;
     pickerPos = { left, top };
     pickerFor = m.id;
@@ -283,13 +288,15 @@
   function toggleMedia() {
     gifOpen = !gifOpen;
     if (gifOpen && mediaBtn) {
+      // Igual que el picker: rect en píxeles de viewport → unidades escaladas.
+      const z = uiZoom();
       const r = mediaBtn.getBoundingClientRect();
-      let left = r.left;
-      const maxLeft = window.innerWidth - 340; // panel ~320px de ancho
+      let left = r.left / z;
+      const maxLeft = window.innerWidth / z - 340; // panel ~320px de ancho
       if (left > maxLeft) left = maxLeft;
       if (left < 8) left = 8;
       // Fijado al viewport, abriendo HACIA ARRIBA desde el botón.
-      mediaPos = { left, bottom: window.innerHeight - r.top + 8 };
+      mediaPos = { left, bottom: (window.innerHeight - r.top) / z + 8 };
     }
   }
   let pins = [];
@@ -583,7 +590,7 @@
   {/if}
 
   {#if inThisVoice}
-    <VoicePanel />
+    <VoicePanel {online} />
   {/if}
 
   <div class="messages" bind:this={scroller}>
@@ -824,7 +831,7 @@
     right: -20px;
     bottom: -90px;
     /* Más grande para que se aprecie, pero sigue muy sutil (baja opacidad). */
-    font-size: clamp(320px, 52vh, 520px);
+    font-size: clamp(320px, calc(52 * var(--vh)), 520px);
     color: var(--tx);
     opacity: 0.05;
     pointer-events: none;
@@ -1526,7 +1533,7 @@
     left: 16px;
     bottom: 70px;
     z-index: 45;
-    width: min(300px, 80vw);
+    width: min(300px, calc(80 * var(--vw)));
     background: var(--pan);
     border: 1px solid var(--bd2);
     border-radius: 12px;
@@ -1677,8 +1684,8 @@
     cursor: zoom-out;
   }
   .lightbox img {
-    max-width: 92vw;
-    max-height: 92vh;
+    max-width: calc(92 * var(--vw));
+    max-height: calc(92 * var(--vh));
     border-radius: 10px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
     cursor: default;

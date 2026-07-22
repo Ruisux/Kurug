@@ -77,7 +77,7 @@
 <style>
   .gifp {
     width: 320px;
-    max-width: 86vw;
+    max-width: calc(86 * var(--vw));
     height: 380px;
     display: flex;
     flex-direction: column;

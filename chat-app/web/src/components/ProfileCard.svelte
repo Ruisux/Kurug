@@ -6,7 +6,7 @@
   import Avatar from "./Avatar.svelte";
   import { api } from "../lib/api.js";
   import { me } from "../lib/stores.js";
-  import { statusColor, statusLabel } from "../lib/ui.js";
+  import { statusColor, statusLabel, anchorFixed } from "../lib/ui.js";
   import { voiceState, setPeerVolume, setPeerMuted } from "../lib/voice.js";
 
   export let user;
@@ -17,9 +17,12 @@
   export let onMessage = () => {};
 
   const W = 300;
-  const H = 330;
-  $: left = Math.max(8, Math.min(x, window.innerWidth - W - 8));
-  $: top = Math.max(8, Math.min(y, window.innerHeight - H - 8));
+  // La altura real depende de lo que traiga el perfil (bio, actividad, control
+  // de volumen): se MIDE en vez de suponerla, así la tarjeta nunca se sale por
+  // abajo. `anchorFixed` traduce las coordenadas del clic a las unidades de la
+  // interfaz escalada (ver --ui-zoom).
+  let cardH = 330;
+  $: pos = anchorFixed(x, y, W, cardH);
 
   $: self = user.id === $me.id;
   // Si está en MI sala de voz, la tarjeta incluye su volumen local.
@@ -36,7 +39,13 @@
 </script>
 
 <div class="backdrop" on:click={onClose} on:contextmenu|preventDefault={onClose} role="presentation"></div>
-<div class="card" style="left:{left}px; top:{top}px" role="dialog" aria-label="Perfil de {info.display_name}">
+<div
+  class="card"
+  bind:clientHeight={cardH}
+  style="left:{pos.left}px; top:{pos.top}px"
+  role="dialog"
+  aria-label="Perfil de {info.display_name}"
+>
   <div class="head" style={info.accent_color ? `--card-accent: ${info.accent_color}` : ""}>
     <div class="stripe"></div>
     <Avatar name={info.display_name} url={info.avatar_url} size={64} status={info.status} />

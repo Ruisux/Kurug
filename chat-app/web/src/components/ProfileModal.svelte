@@ -159,7 +159,7 @@
   .modal {
     width: 420px;
     max-width: 100%;
-    max-height: 90vh;
+    max-height: calc(90 * var(--vh));
     overflow-y: auto;
     background: var(--pan);
     border: 1px solid var(--bd2);

@@ -253,10 +253,21 @@
 
   // usuario_id -> { muted, deafened, rtt } (iconos y ping en los recuadros).
   $: voiceFlags = (() => {
+    const live = new Map(online.map((u) => [u.id, u]));
     const m = {};
     for (const members of Object.values(voiceByChannel))
-      for (const u of members)
-        m[u.id] = { muted: !!u.muted, deafened: !!u.deafened, rtt: u.rtt ?? null };
+      for (const u of members) {
+        const p = live.get(u.id);
+        m[u.id] = {
+          muted: !!u.muted,
+          deafened: !!u.deafened,
+          rtt: u.rtt ?? null,
+          // Estado del perfil: quien está en voz está conectado, así que a
+          // falta de dato vivo el mínimo es "online" (nunca gris).
+          status: p?.status || "online",
+          custom_status: p?.custom_status || null,
+        };
+      }
     return m;
   })();
 

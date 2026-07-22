@@ -112,7 +112,7 @@
   }
   .modal {
     position: fixed; z-index: 91; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: min(520px, 94vw); max-height: 86vh; display: flex; flex-direction: column;
+    width: min(520px, calc(94 * var(--vw))); max-height: calc(86 * var(--vh)); display: flex; flex-direction: column;
     background: var(--pan); border: 1px solid var(--bd2); border-radius: 16px;
     box-shadow: 0 24px 60px var(--shadow);
   }

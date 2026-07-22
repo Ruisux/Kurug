@@ -108,6 +108,15 @@ body {
    diminuto. En "auto" la escala sube sola con el ancho de la ventana; además
    el usuario puede fijarla a mano en Apariencia (data-uiscale en <html>). */
 :root { --ui-zoom: 1; }
+/* Unidades de viewport CORREGIDAS por la escala. Dentro de la caja escalada,
+   `86vh` no son el 86% de la pantalla: son el 86% multiplicado por el zoom (en
+   una pantalla de 800px con escala 1.35 se convierten en 929px y el modal ya no
+   cabe). Usar `calc(86 * var(--vh))` en su lugar da el 86% real. */
+:root {
+  --vh: calc(1vh / var(--ui-zoom, 1));
+  --vw: calc(1vw / var(--ui-zoom, 1));
+  --dvh: calc(1dvh / var(--ui-zoom, 1));
+}
 @media (min-width: 1600px) { :root { --ui-zoom: 1.1; } }
 @media (min-width: 1920px) { :root { --ui-zoom: 1.2; } }
 @media (min-width: 2500px) { :root { --ui-zoom: 1.35; } }

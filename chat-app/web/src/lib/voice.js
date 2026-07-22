@@ -114,7 +114,11 @@ function dropChain(chain, track) {
   if (!chain) return;
   try { chain.src?.disconnect(); } catch {}
   try { chain.gain?.disconnect(); } catch {}
-  try { track?.detach(); } catch {}
+  // Desengancha SOLO su propio elemento: si esta pista ya tiene una cadena
+  // nueva montada (re-suscripción), un detach() a secas la dejaría muda.
+  try { chain.el ? track?.detach(chain.el) : track?.detach(); } catch {}
+  try { chain.el?.pause?.(); } catch {}
+  try { if (chain.el) chain.el.srcObject = null; } catch {}
   try { chain.el?.remove(); } catch {}
 }
 
@@ -206,14 +210,20 @@ function onSubscribed(track, _pub, participant) {
     // El audio de una pantalla compartida es una pista APARTE del micro; si se
     // mezclaban, el slider de volumen dejaba de controlar la voz al compartir.
     const isShareAudio = (_pub?.source || track.source) === Track.Source.ScreenShareAudio;
-    const chain = buildChain(track); // <audio> muteado + WebAudio con ganancia
+    // OJO: LiveKit reemite TrackSubscribed de una pista que YA estaba sonando
+    // cuando se re-suscribe (bache de red, reconexión, adaptiveStream). Si no
+    // se suelta antes la cadena anterior, quedan DOS caminos del MISMO audio
+    // conectados a la salida y la persona se oye DOBLE, con unos milisegundos
+    // de desfase (el "eco raro"). Por eso se libera siempre la ranura primero.
     if (isShareAudio) {
+      dropChain(p.screenChain, p.screenAudio);
       p.screenAudio = track;
-      p.screenChain = chain;
+      p.screenChain = buildChain(track); // <audio> muteado + WebAudio con ganancia
     } else {
+      dropChain(p.audioChain, p.audioTrack);
       p.audioTrack = track;
-      p.audioChain = chain;
-      p.audioEl = chain.el;
+      p.audioChain = buildChain(track);
+      p.audioEl = p.audioChain.el;
     }
     applyVol(p);
   } else if (track.kind === Track.Kind.Video) {
