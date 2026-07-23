@@ -92,9 +92,43 @@ function closeOutCtx() {
 // Elemento y cadena se crean en la MISMA pasada síncrona: no existe la ventana
 // en la que el <audio> sonara a tope en paralelo (la carrera del viejo
 // webAudioMix de LiveKit que nos obligó a quitarlo).
+// El <audio> es solo un GRIFO para que Chrome entregue samples a WebAudio: no
+// debe sonar nunca, porque quien suena es la cadena con ganancia.
+//
+// OJO, ESTO ES LA CAUSA DEL "SE ESCUCHA DOBLE": livekit-client desmutea esos
+// elementos POR SU CUENTA. `Room.startAudio()` recorre las pistas remotas y
+// hace `e.muted = false` sobre todas, y `attachToElement()` repite lo mismo en
+// cada attach. Al pasar eso, la persona se oye por DOS caminos a la vez (el
+// elemento + la cadena) con unos milisegundos de desfase: el "sonido raro".
+// Como `startAudio()` se dispara sola (al entrar, al conceder el micro, al
+// volver a la pestaña…), no basta con silenciar una vez: hay que reafirmarlo.
+// Silenciamos por partida doble —`muted` Y `volume`, porque LiveKit solo toca
+// `muted`— y marcamos el elemento para poder barrerlos después.
+function silenceEl(el) {
+  if (!el) return;
+  el.muted = true;
+  el.volume = 0;
+  el.dataset.kurugSilenced = "1";
+}
+
+// Red de seguridad: vuelve a callar los grifos que LiveKit haya desmuteado.
+// Es barato (un par de asignaciones por pista) y da igual POR QUÉ ruta se
+// desmutaron: en el siguiente barrido vuelven a estar callados. Los elementos
+// SIN marca son los del modo de emergencia (sin WebAudio) y no se tocan: esos
+// sí tienen que sonar.
+function resilence() {
+  if (!audioBin) return;
+  for (const el of audioBin.querySelectorAll('audio[data-kurug-silenced="1"]')) {
+    if (!el.muted || el.volume !== 0) {
+      el.muted = true;
+      el.volume = 0;
+    }
+  }
+}
+
 function buildChain(track) {
   const el = track.attach();
-  el.muted = true;
+  silenceEl(el);
   ensureAudioBin().appendChild(el);
   try {
     const ctx = ensureOutCtx();
@@ -105,7 +139,10 @@ function buildChain(track) {
     return { el, src, gain };
   } catch {
     // Si WebAudio fallara, que al menos se oiga por el elemento (sin boost).
+    // Se le quita la marca: este SÍ debe sonar y el barrido no debe callarlo.
+    delete el.dataset.kurugSilenced;
     el.muted = false;
+    el.volume = 1;
     return { el, src: null, gain: null };
   }
 }
@@ -340,6 +377,8 @@ export async function joinVoice(channelId) {
       const p = peers[pt.identity];
       if (p) { p.quality = q; publish(); }
     })
+    .on(RoomEvent.AudioPlaybackStatusChanged, resilence) // startAudio() acaba de correr
+    .on(RoomEvent.Reconnected, resilence) // tras reconectar re-engancha pistas
     .on(RoomEvent.Disconnected, () => { if (get(voiceState).active) leaveVoice(); });
 
   const r = room;
@@ -383,7 +422,12 @@ export async function joinVoice(channelId) {
   startRttMonitor();   // mi ping al SFU cada 5 s (se difunde por presencia)
 
   (async () => {
+    // `startAudio()` desmutea TODOS los grifos ya enganchados (los de quien ya
+    // estaba en la sala cuando entraste): re-silenciar justo después es lo que
+    // evita oírles doble. Es también el motivo de que "a alguien le pasaba
+    // siempre": quien ya estaba dentro caía en esta ventana.
     try { await r.startAudio(); } catch {}
+    resilence();
     try { await ensureOutCtx().resume(); } catch {}
     // Salida de audio elegida (auriculares/altavoz), si la hay.
     if (pr.outputDeviceId) {
@@ -396,6 +440,7 @@ export async function joinVoice(channelId) {
     } catch {
       micOk = false;
     }
+    resilence(); // conceder el micro emite AudioStreamAcquired -> startAudio()
     if (seq !== joinSeq) return; // ya salimos de la sala mientras tanto
     if (!micOk) {
       voiceState.update((s) => ({ ...s, muted: true, error: "Sin micrófono: estás solo escuchando." }));
@@ -446,7 +491,13 @@ async function measureRtt() {
 function startRttMonitor() {
   clearInterval(rttTimer);
   measureRtt();
-  rttTimer = setInterval(measureRtt, 5000);
+  rttTimer = setInterval(() => {
+    measureRtt();
+    // Barrido de seguridad del audio doble: si alguna ruta de LiveKit que no
+    // controlamos vuelve a desmutear un grifo, aquí se corrige sola en ≤5 s
+    // en vez de quedarse toda la llamada sonando doble.
+    resilence();
+  }, 5000);
 }
 
 function stopRttMonitor() {
