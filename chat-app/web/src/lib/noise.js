@@ -9,42 +9,52 @@
 //
 // RNNoise SOLO no basta: es un denoiser espectral que rebaja el ruido de banda
 // ancha MIENTRAS hablas, pero deja pasar respiración y transitorios (teclado),
-// y este paquete además descarta la probabilidad VAD que calcula RNNoise. Por
-// eso encadenamos una PUERTA DE RUIDO después: mide el nivel y silencia por
-// completo la señal cuando baja del umbral (los silencios entre frases, los
-// respiros y el teclado cuando no hablas). Juntos imitan al Krisp/Discord:
+// y este paquete además descarta la probabilidad VAD que calcula RNNoise. La
+// cadena completa es:
 //
-//   micro -> RNNoise (limpia el fondo) -> NoiseGate (corta lo que no es voz)
+//   micro -> paso-alto 90 Hz (golpes de mesa, roces, retumbe del ventilador)
+//         -> RNNoise (limpia el ruido de fondo continuo)
+//         -> puerta propia (silencia lo que no es voz, CON rampas)
 //         -> pista procesada -> se publica a la sala
+//
+// El paso-alto va primero porque un golpe que entra en RNNoise se modela como
+// ruido y ensucia la voz. La puerta es nuestra (voiceGateWorklet.js) y no la
+// del paquete: aquella conmutaba la ganancia de golpe y metía un clic en cada
+// apertura y cierre.
 //
 // Nota honesta: el teclado MIENTRAS hablas es lo único que ningún supresor de
 // un solo canal quita del todo (la puerta está abierta porque hay voz); RNNoise
 // lo atenúa pero no lo borra. Para eso haría falta un modelo de IA específico.
-import {
-  loadRnnoise,
-  RnnoiseWorkletNode,
-  NoiseGateWorkletNode,
-} from "@sapphi-red/web-noise-suppressor";
+import { loadRnnoise, RnnoiseWorkletNode } from "@sapphi-red/web-noise-suppressor";
 import rnnoiseWorkletPath from "@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url";
-import noiseGateWorkletPath from "@sapphi-red/web-noise-suppressor/noiseGateWorklet.js?url";
 import rnnoiseWasmPath from "@sapphi-red/web-noise-suppressor/rnnoise.wasm?url";
 import rnnoiseSimdWasmPath from "@sapphi-red/web-noise-suppressor/rnnoise_simd.wasm?url";
+import gateWorkletPath from "./voiceGateWorklet.js?url";
 
 let wasmPromise = null;
+
+// Corte del paso-alto (Hz). Los golpes en la mesa, los roces del micro y el
+// retumbe del ventilador viven casi todos por DEBAJO de esta frecuencia,
+// mientras que la voz se entiende de 300 Hz para arriba. Cortando aquí, esos
+// golpes ni siquiera llegan a RNNoise (que no está entrenada para impulsos) ni
+// abren la puerta. 90 Hz respeta los graves de una voz masculina.
+const HPF_HZ = 90;
 
 // Presets de la puerta de ruido. Umbrales en dBFS sobre la SALIDA de RNNoise
 // (ya limpia), así que se pueden poner altos sin comerse la voz:
 //   openThreshold  = nivel que ABRE la puerta (deja pasar la voz)
 //   closeThreshold = nivel que la CIERRA (histéresis: evita el parpadeo)
-//   holdMs         = la puerta sigue abierta este rato tras la última voz, para
-//                    no cortar el final de las palabras
-// Más "fuerte" = umbral más alto = corta más respiros/teclado, pero puede
-// recortar una voz MUY floja. "Medio" es el equilibrio por defecto.
+//   holdMs         = sigue abierta este rato tras la última voz (no corta el
+//                    final de las palabras ni los huecos entre sílabas)
+//   attackMs/releaseMs = rampas de la ganancia. Son las que evitan los clics:
+//                    la puerta se abre y se cierra en pendiente, no de golpe.
+// Más "fuerte" = umbral más alto = corta más respiros y teclado de fondo, pero
+// puede recortar una voz MUY floja. "Medio" es el equilibrio por defecto.
 export const GATE_PRESETS = {
   off:    null,
-  suave:  { openThreshold: -58, closeThreshold: -64, holdMs: 350 },
-  medio:  { openThreshold: -50, closeThreshold: -57, holdMs: 280 },
-  fuerte: { openThreshold: -43, closeThreshold: -50, holdMs: 220 },
+  suave:  { openThreshold: -58, closeThreshold: -64, holdMs: 350, attackMs: 5, releaseMs: 180 },
+  medio:  { openThreshold: -48, closeThreshold: -55, holdMs: 300, attackMs: 4, releaseMs: 140 },
+  fuerte: { openThreshold: -40, closeThreshold: -47, holdMs: 240, attackMs: 3, releaseMs: 110 },
 };
 export const GATE_DEFAULT = "medio";
 
@@ -72,7 +82,7 @@ export function isNoiseSupported() {
 // `gateKey` elige el preset de la puerta de ruido (o "off" para desactivarla).
 export function createNoiseProcessor(gateKey = GATE_DEFAULT) {
   const gateCfg = gateConfig(gateKey);
-  let ctx = null, src = null, rnnoise = null, gate = null, dest = null;
+  let ctx = null, src = null, hpf1 = null, hpf2 = null, rnnoise = null, gate = null, dest = null;
 
   async function setup(opts) {
     const wasmBinary = await preloadNoiseModel();
@@ -80,9 +90,18 @@ export function createNoiseProcessor(gateKey = GATE_DEFAULT) {
     // remuestrea el micro si hiciera falta.
     ctx = new AudioContext({ sampleRate: 48000 });
     await ctx.audioWorklet.addModule(rnnoiseWorkletPath);
-    if (gateCfg) await ctx.audioWorklet.addModule(noiseGateWorkletPath);
+    if (gateCfg) await ctx.audioWorklet.addModule(gateWorkletPath);
 
     src = ctx.createMediaStreamSource(new MediaStream([opts.track]));
+    // Dos biquads en cascada = 24 dB/octava: a 45 Hz un golpe de mesa baja
+    // ~24 dB. Uno solo (12 dB/oct) se quedaba corto con los porrazos fuertes.
+    hpf1 = ctx.createBiquadFilter();
+    hpf2 = ctx.createBiquadFilter();
+    for (const f of [hpf1, hpf2]) {
+      f.type = "highpass";
+      f.frequency.value = HPF_HZ;
+      f.Q.value = 0.707; // Butterworth: sin resonancia en el codo
+    }
     rnnoise = new RnnoiseWorkletNode(ctx, { wasmBinary, maxChannels: 1 });
     dest = ctx.createMediaStreamDestination();
 
@@ -91,16 +110,26 @@ export function createNoiseProcessor(gateKey = GATE_DEFAULT) {
     // canal izquierdo y a esa persona se le oye por un solo oído. Con
     // channelCount 1 + "explicit", WebAudio mezcla L+R a mono en la entrada,
     // y el mono de salida se reparte a ambos oídos al reproducir.
-    for (const node of [rnnoise, dest]) {
+    for (const node of [hpf1, hpf2, rnnoise, dest]) {
       try { node.channelCount = 1; node.channelCountMode = "explicit"; } catch {}
     }
 
-    // Cadena: micro -> RNNoise -> (puerta) -> destino.
+    // Cadena: micro -> paso-alto -> RNNoise -> (puerta) -> destino.
+    // El paso-alto va PRIMERO a propósito: si el golpe llega a RNNoise, el
+    // denoiser intenta modelarlo como ruido de fondo y ensucia la voz.
     let last = src;
+    last.connect(hpf1);
+    hpf1.connect(hpf2);
+    last = hpf2;
     last.connect(rnnoise);
     last = rnnoise;
     if (gateCfg) {
-      gate = new NoiseGateWorkletNode(ctx, { ...gateCfg, maxChannels: 1 });
+      gate = new AudioWorkletNode(ctx, "kurug-voice-gate", {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+        processorOptions: gateCfg,
+      });
       try { gate.channelCount = 1; gate.channelCountMode = "explicit"; } catch {}
       last.connect(gate);
       last = gate;
@@ -113,11 +142,14 @@ export function createNoiseProcessor(gateKey = GATE_DEFAULT) {
 
   async function teardown(proc) {
     try { rnnoise?.destroy(); } catch {}
-    try { gate?.disconnect(); } catch {} // NoiseGateWorkletNode no tiene destroy()
+    try { gate?.port.postMessage("destroy"); } catch {}
+    try { gate?.disconnect(); } catch {}
+    try { hpf1?.disconnect(); } catch {}
+    try { hpf2?.disconnect(); } catch {}
     try { src?.disconnect(); } catch {}
     try { proc.processedTrack?.stop(); } catch {}
     try { await ctx?.close(); } catch {}
-    ctx = src = rnnoise = gate = dest = null;
+    ctx = src = hpf1 = hpf2 = rnnoise = gate = dest = null;
     proc.processedTrack = undefined;
   }
 

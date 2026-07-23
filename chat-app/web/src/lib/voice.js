@@ -335,6 +335,21 @@ export async function joinVoice(channelId) {
     adaptiveStream: true,
     dynacast: true,
     audioCaptureDefaults: micAudioConstraints(),
+    publishDefaults: {
+      // DTX (transmisión discontinua) apagado A PROPÓSITO. Con DTX el codec
+      // deja de enviar cuando cree que hay silencio y el receptor rellena con
+      // "ruido de confort" inventado; como nuestra puerta de ruido ya entrega
+      // silencio DIGITAL, el codec entraba y salía de ese modo en cada frase y
+      // los saltos se oían como un warble al empezar y terminar de hablar
+      // (las "pequeñas interferencias"). Sin DTX el silencio real cuesta muy
+      // poco ancho de banda y las transiciones son limpias.
+      dtx: false,
+      // Redundancia de paquetes: protege la voz de las pérdidas leves de red.
+      red: true,
+      // Opus a 40 kbps mono: holgado para voz (el preset por defecto se queda
+      // corto y se nota metálico en las eses).
+      audioPreset: { maxBitrate: 40_000 },
+    },
   });
 
   room
