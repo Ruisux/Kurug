@@ -25,7 +25,8 @@ from ..schemas import GifOut
 router = APIRouter(prefix="/gifs", tags=["gifs"])
 
 GIPHY_BASE = "https://api.giphy.com/v1/gifs"
-LIMIT = 24
+LIMIT = 30
+MAX_OFFSET = 4000  # Giphy corta sobre 5000; dejamos margen
 
 
 def _require_key() -> str:
@@ -71,11 +72,12 @@ def _parse(payload: dict) -> list[GifOut]:
     return out
 
 
-async def _giphy(path: str, params: dict) -> list[GifOut]:
+async def _giphy(path: str, params: dict, offset: int = 0) -> list[GifOut]:
     params = {
         **params,
         "api_key": _require_key(),
         "limit": LIMIT,
+        "offset": max(0, min(MAX_OFFSET, offset)),
         "rating": "pg-13",
         "bundle": "messaging_non_clips",
     }
@@ -89,10 +91,14 @@ async def _giphy(path: str, params: dict) -> list[GifOut]:
 
 
 @router.get("/featured", response_model=list[GifOut])
-async def featured(user: CurrentUser):
-    return await _giphy("trending", {})
+async def featured(user: CurrentUser, offset: int = Query(0, ge=0, le=MAX_OFFSET)):
+    return await _giphy("trending", {}, offset=offset)
 
 
 @router.get("/search", response_model=list[GifOut])
-async def search(user: CurrentUser, q: str = Query(..., min_length=1, max_length=100)):
-    return await _giphy("search", {"q": q.strip()})
+async def search(
+    user: CurrentUser,
+    q: str = Query(..., min_length=1, max_length=100),
+    offset: int = Query(0, ge=0, le=MAX_OFFSET),
+):
+    return await _giphy("search", {"q": q.strip()}, offset=offset)

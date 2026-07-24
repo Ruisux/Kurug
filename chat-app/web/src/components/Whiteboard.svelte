@@ -184,8 +184,12 @@
     else if (e.key === "Escape") textEdit = null;
   }
 
-  function clearAll() {
-    if (confirm("¿Limpiar TODA la pizarra para todos?")) boardOps.clear();
+  // Confirmación con un modal propio (el confirm() del navegador rompía la
+  // estética de la app).
+  let confirmClear = false;
+  function doClear() {
+    confirmClear = false;
+    boardOps.clear();
   }
 
   // Exportar el flujo como imagen PNG: se serializa el SVG tal cual (mismo
@@ -292,7 +296,7 @@
     <span class="sep"></span>
     <button class="tb" on:click={boardOps.undo} title="Deshacer (lo tuyo)" aria-label="Deshacer"><i class="ti ti-arrow-back-up"></i></button>
     <button class="tb" on:click={exportPng} disabled={exporting} title="Exportar como imagen (PNG)" aria-label="Exportar como imagen"><i class="ti ti-download"></i></button>
-    <button class="tb" on:click={clearAll} title="Limpiar todo" aria-label="Limpiar todo"><i class="ti ti-trash"></i></button>
+    <button class="tb" on:click={() => (confirmClear = true)} title="Limpiar todo" aria-label="Limpiar todo"><i class="ti ti-trash"></i></button>
     <span class="spacer"></span>
     <button class="tb close" on:click={onClose} title="Cerrar pizarra" aria-label="Cerrar pizarra"><i class="ti ti-x"></i></button>
   </div>
@@ -365,6 +369,22 @@
       on:blur={commitText}
     />
   {/if}
+
+  {#if confirmClear}
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+    <div class="ask-backdrop" on:click={() => (confirmClear = false)}>
+      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+      <div class="ask" on:click|stopPropagation role="dialog" aria-label="Limpiar pizarra">
+        <div class="ask-ic"><i class="ti ti-trash"></i></div>
+        <div class="ask-t">¿Limpiar toda la pizarra?</div>
+        <div class="ask-s">Se borra para todos y no se puede deshacer.</div>
+        <div class="ask-btns">
+          <button class="ask-cancel" on:click={() => (confirmClear = false)}>Cancelar</button>
+          <button class="ask-ok" on:click={doClear}>Limpiar todo</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -375,6 +395,77 @@
     display: flex;
     flex-direction: column;
     background: var(--ink);
+  }
+  /* Modal de confirmación (limpiar), con la estética de Kurug. */
+  .ask-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background: rgba(10, 7, 5, 0.55);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ask {
+    width: min(340px, 88%);
+    background: var(--pan);
+    border: 1px solid var(--bd2);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px var(--shadow);
+    padding: 22px 20px 18px;
+    text-align: center;
+  }
+  .ask-ic {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 12px;
+    border-radius: 50%;
+    background: rgba(212, 61, 42, 0.14);
+    color: #d43d2a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+  }
+  .ask-t {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--tx);
+  }
+  .ask-s {
+    font-size: 12.5px;
+    color: var(--mut);
+    margin-top: 5px;
+  }
+  .ask-btns {
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .ask-btns button {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--bd2);
+  }
+  .ask-cancel {
+    background: var(--field);
+    color: var(--tx);
+  }
+  .ask-cancel:hover {
+    border-color: var(--shu);
+  }
+  .ask-ok {
+    background: #d43d2a;
+    color: #fff;
+    border-color: #d43d2a;
+  }
+  .ask-ok:hover {
+    background: #b93524;
   }
   .toolbar {
     display: flex;

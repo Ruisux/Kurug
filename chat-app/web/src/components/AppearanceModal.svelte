@@ -96,8 +96,8 @@
     </label>
     <label class="row">
       <div class="rt">
-        <div class="rl">Decoraciones</div>
-        <div class="rs">La rama de sakura, el torii y las marcas de agua kanji</div>
+        <div class="rl">Decoraciones laterales</div>
+        <div class="rs">La rama de sakura y el torii de los lados (el kanji del chat se queda)</div>
       </div>
       <button class="sw" class:on={$decorations} on:click={toggleDecorations} role="switch" aria-checked={$decorations} aria-label="Decoraciones">
         <span class="knob"></span>

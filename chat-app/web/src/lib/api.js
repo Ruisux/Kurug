@@ -106,8 +106,8 @@ export const api = {
     });
   },
 
-  gifsFeatured: () => req("GET", "/gifs/featured"),
-  gifsSearch: (q) => req("GET", `/gifs/search?q=${encodeURIComponent(q)}`),
+  gifsFeatured: (offset = 0) => req("GET", `/gifs/featured?offset=${offset}`),
+  gifsSearch: (q, offset = 0) => req("GET", `/gifs/search?q=${encodeURIComponent(q)}&offset=${offset}`),
 
   channels: () => req("GET", "/channels"),
   createChannel: (name, kind = "text") => req("POST", "/channels", { json: { name, kind } }),

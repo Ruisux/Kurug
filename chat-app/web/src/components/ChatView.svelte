@@ -575,7 +575,10 @@
 </script>
 
 <section class="chat">
-  {#if $decorations}<span class="wm serif" aria-hidden="true">道</span>{/if}
+  <!-- El kanji de marca de agua es la personalidad de Kurug: SIEMPRE visible,
+       no depende del toggle de decoraciones (ese solo quita la rama de la
+       derecha y el torii de la izquierda). -->
+  <span class="wm serif" aria-hidden="true">道</span>
 
   <header>
     <button class="back" on:click={onBack} aria-label="Volver"><i class="ti ti-chevron-left"></i></button>

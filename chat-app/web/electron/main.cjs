@@ -6,7 +6,7 @@
 // Fase 1: ventana + controles de ventana (min/max/cerrar) por IPC.
 // (El selector de pantalla propio y el audio del sistema llegan en la Fase 2;
 //  el auto-update y los atajos globales, en la Fase 3.)
-const { app, BrowserWindow, ipcMain, shell, protocol, net, session, desktopCapturer, globalShortcut } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, protocol, net, session, desktopCapturer, globalShortcut, Menu, clipboard, dialog } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -81,7 +81,60 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  attachContextMenu(mainWindow.webContents);
   mainWindow.loadURL(resolveStartUrl());
+}
+
+// --- Menú contextual nativo (clic derecho) ---
+// En la app de escritorio el menú por defecto del navegador no aparece, así que
+// al dar clic derecho no salían opciones. Aquí montamos uno propio: sobre una
+// IMAGEN da "copiar imagen / copiar dirección / guardar imagen"; sobre texto,
+// los básicos (copiar, cortar, pegar); y en un campo editable, pegar.
+function attachContextMenu(wc) {
+  wc.on("context-menu", (_e, params) => {
+    const items = [];
+    const isImg = params.mediaType === "image" && params.srcURL;
+    if (isImg) {
+      items.push(
+        { label: "Copiar imagen", click: () => wc.copyImageAt(params.x, params.y) },
+        { label: "Copiar dirección de la imagen", click: () => clipboard.writeText(params.srcURL) },
+        {
+          label: "Guardar imagen…",
+          click: () => {
+            // downloadURL dispara el flujo de descarga; el 'will-download' de
+            // abajo abre el diálogo "Guardar como".
+            try { wc.downloadURL(params.srcURL); } catch {}
+          },
+        },
+      );
+    }
+    if (params.linkURL) {
+      if (items.length) items.push({ type: "separator" });
+      items.push(
+        { label: "Copiar enlace", click: () => clipboard.writeText(params.linkURL) },
+        { label: "Abrir en el navegador", click: () => shell.openExternal(params.linkURL) },
+      );
+    }
+    // Texto seleccionado / campos editables.
+    const canCopy = params.selectionText && params.selectionText.length > 0;
+    if (canCopy || params.isEditable) {
+      if (items.length) items.push({ type: "separator" });
+      if (params.isEditable) items.push({ role: "cut" });
+      if (canCopy || params.isEditable) items.push({ role: "copy" });
+      if (params.isEditable) items.push({ role: "paste" });
+      items.push({ type: "separator" }, { role: "selectAll" });
+    }
+    if (!items.length) return; // sin nada útil que ofrecer, no molestamos
+    Menu.buildFromTemplate(items).popup({ window: mainWindow });
+  });
+
+  // "Guardar imagen…": diálogo nativo de destino para la descarga.
+  wc.session.on("will-download", (_e, item) => {
+    const name = item.getFilename() || "imagen";
+    const dest = dialog.showSaveDialogSync(mainWindow, { defaultPath: name });
+    if (dest) item.setSavePath(dest);
+    else item.cancel();
+  });
 }
 
 // --- Compartir pantalla con SELECTOR PROPIO (sin el picker de Chrome ni la
