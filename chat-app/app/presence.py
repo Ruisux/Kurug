@@ -23,13 +23,21 @@ VALID_STATUSES = {"online", "away", "dnd", "invisible"}
 
 
 def _info_from_user(user) -> dict:
+    from .gamify import level_from_xp, parse_badges
+    lv = level_from_xp(getattr(user, "xp", 0) or 0)
     return {
         "id": user.id,
         "display_name": user.display_name,
         "avatar_url": user.avatar_url,
+        "banner_url": getattr(user, "banner_url", None),
         "status": user.status,
         "custom_status": user.custom_status,
         "accent_color": user.accent_color,
+        # Personalización: rango, nivel e insignias (para teñir el nombre en el
+        # chat y las mini-tarjetas; el detalle completo lo trae GET /users/{id}).
+        "rank": getattr(user, "rank", None),
+        "level": lv["level"],
+        "badges": parse_badges(getattr(user, "badges", "[]")),
         # Actividad ("jugando X" / "escuchando Y"): NO está en la BD (la manda
         # la app de escritorio en vivo); connect/update_profile la PRESERVAN.
         "activity": None,

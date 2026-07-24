@@ -71,6 +71,14 @@ export const api = {
     fd.append("file", file);
     return req("POST", "/users/me/avatar", { body: fd });
   },
+  uploadBanner: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return req("POST", "/users/me/banner", { body: fd });
+  },
+  removeBanner: () => req("DELETE", "/users/me/banner"),
+  setRank: (id, rank) => req("POST", `/users/${id}/rank`, { json: { rank } }),
+  setBadge: (id, key, action) => req("POST", `/users/${id}/badges`, { json: { key, action } }),
   user: (id) => req("GET", `/users/${id}`),
   users: () => req("GET", "/users"),
   uploadImage: (file) => {

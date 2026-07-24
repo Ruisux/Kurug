@@ -374,7 +374,7 @@
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
     <div class="ask-backdrop" on:click={() => (confirmClear = false)}>
       <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-      <div class="ask" on:click|stopPropagation role="dialog" aria-label="Limpiar pizarra">
+      <div class="ask" on:click|stopPropagation role="dialog" tabindex="-1" aria-label="Limpiar pizarra">
         <div class="ask-ic"><i class="ti ti-trash"></i></div>
         <div class="ask-t">¿Limpiar toda la pizarra?</div>
         <div class="ask-s">Se borra para todos y no se puede deshacer.</div>

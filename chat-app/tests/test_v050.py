@@ -43,6 +43,16 @@ def _drain_until(ws, wanted_type, tries=10):
     raise AssertionError(f"no llegó ningún mensaje '{wanted_type}'")
 
 
+def _drain_presence(ws, pred, tries=12):
+    """presence_update que cumpla `pred(user)` (ignora broadcasts intermedios,
+    p. ej. el que dispara ganar una insignia)."""
+    for _ in range(tries):
+        m = ws.receive_json()
+        if m.get("type") == "presence_update" and pred(m["user"]):
+            return m
+    raise AssertionError("no llegó el presence_update esperado")
+
+
 def _el(el_id="a1b2c3d4", kind="pen", **extra):
     base = {"id": el_id, "kind": kind, "points": [[10, 10], [20, 20]],
             "color": "#e2553b", "width": 4}
@@ -246,8 +256,10 @@ def test_activity_set_broadcast_and_preserved(client):
             wsb.receive_json()
             _drain_until(wsa, "presence_update")  # bob apareció
 
+            # (poner música también concede la insignia "melomano", que emite un
+            # presence_update extra: por eso drenamos por predicado.)
             wsb.send_json({"type": "set_activity", "kind": "music", "text": "Pink Floyd - Time"})
-            upd = _drain_until(wsa, "presence_update")
+            upd = _drain_presence(wsa, lambda u: u.get("activity") is not None)
             assert upd["user"]["activity"] == {"kind": "music", "text": "Pink Floyd - Time"}
 
             # Cambiar el perfil NO debe borrar la actividad (no vive en la BD).
@@ -256,13 +268,12 @@ def test_activity_set_broadcast_and_preserved(client):
             client.patch("/users/me", json={"nickname": "bobby"},
                          headers={"Authorization": f"Bearer {tb}"})
             wsb.send_json({"type": "sync_profile"})
-            upd = _drain_until(wsa, "presence_update")
-            assert upd["user"]["display_name"] == "bobby"
+            upd = _drain_presence(wsa, lambda u: u.get("display_name") == "bobby")
             assert upd["user"]["activity"] == {"kind": "music", "text": "Pink Floyd - Time"}
 
             # kind inválido = limpiar
             wsb.send_json({"type": "set_activity", "kind": "hack", "text": "x"})
-            upd = _drain_until(wsa, "presence_update")
+            upd = _drain_presence(wsa, lambda u: u.get("activity") is None)
             assert upd["user"]["activity"] is None
 
 
@@ -285,7 +296,7 @@ def test_activity_music_enriched(client):
                 "duration_ms": 216000, "position_ms": 74000,
                 "at": 1_750_000_000_000, "playing": True,
             })
-            act = _drain_until(wsa, "presence_update")["user"]["activity"]
+            act = _drain_presence(wsa, lambda u: (u.get("activity") or {}).get("title") == "The Less I Know The Better")["user"]["activity"]
             assert act["title"] == "The Less I Know The Better"
             assert act["artist"] == "Tame Impala"
             assert act["album"] == "Currents"
@@ -302,7 +313,7 @@ def test_activity_music_enriched(client):
                 "title": "Y", "art": "data:image/png;base64," + "A" * 400_000,
                 "at": 9_999_999_999_999_999,
             })
-            act = _drain_until(wsa, "presence_update")["user"]["activity"]
+            act = _drain_presence(wsa, lambda u: (u.get("activity") or {}).get("title") == "Y")["user"]["activity"]
             assert act["title"] == "Y"
             assert "art" not in act
             assert "at" not in act

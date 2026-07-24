@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 # Estados de disponibilidad que el usuario puede elegir.
 StatusLiteral = Literal["online", "away", "dnd", "invisible"]
@@ -86,11 +86,37 @@ class UserOut(BaseModel):
     display_name: str
     nickname: str | None = None
     avatar_url: str | None = None
+    banner_url: str | None = None
     bio: str | None = None
     accent_color: str = "#d97a4a"
     status: StatusLiteral = "online"
     custom_status: str | None = None
     is_admin: bool = False
+    # --- Personalización: rango, nivel e insignias ---
+    rank: str | None = None
+    xp: int = 0
+    level: int = 1          # se calcula de la XP (validador abajo)
+    xp_into: int = 0        # XP dentro del nivel actual
+    xp_span: int = 100      # XP que necesita ese nivel para completarse
+    badges: list[str] = []  # claves de las insignias obtenidas
+
+    @field_validator("badges", mode="before")
+    @classmethod
+    def _parse_badges(cls, v):
+        # En el modelo `badges` es un JSON string; aquí se convierte a lista.
+        from .gamify import parse_badges
+        if isinstance(v, str):
+            return parse_badges(v)
+        return v or []
+
+    @model_validator(mode="after")
+    def _derive_gamify(self):
+        from .gamify import level_from_xp
+        lv = level_from_xp(self.xp)
+        self.level = lv["level"]
+        self.xp_into = lv["into"]
+        self.xp_span = lv["span"]
+        return self
 
 
 class MeOut(UserOut):
@@ -108,6 +134,17 @@ class UserUpdate(BaseModel):
     )
     status: StatusLiteral | None = None
     custom_status: str | None = Field(default=None, max_length=64)
+
+
+class RankUpdate(BaseModel):
+    """Asignar (o quitar con null) el rango de un usuario. Solo admin."""
+    rank: str | None = None
+
+
+class BadgeUpdate(BaseModel):
+    """Conceder/quitar una insignia a un usuario. Solo admin."""
+    key: str
+    action: Literal["add", "remove"] = "add"
 
 
 class Token(BaseModel):

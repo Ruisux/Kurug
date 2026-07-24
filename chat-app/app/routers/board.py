@@ -11,8 +11,26 @@ from ..database import SessionLocal
 from ..models import User
 from ..security import decode_token
 from ..board import board
+from ..gamify import grant_badge
+from ..presence import presence
 
 router = APIRouter()
+
+# A quién ya le concedimos la insignia de pizarra en esta ejecución del server:
+# evita tocar la BD en cada trazo (la pizarra emite muchísimos "add").
+_pizarra_granted: set[int] = set()
+
+
+async def _award_pizarra(uid: int) -> None:
+    if uid in _pizarra_granted:
+        return
+    _pizarra_granted.add(uid)
+    with SessionLocal() as db:
+        u = db.get(User, uid)
+        if u is not None and grant_badge(u, "pizarra"):
+            db.commit()
+            db.refresh(u)
+            await presence.update_profile(u)
 
 
 @router.websocket("/ws/board/{channel_id}")
@@ -43,6 +61,7 @@ async def board_ws(websocket: WebSocket, channel_id: int, token: str = Query(...
             t = data.get("type")
             if t == "add":
                 await board.add(channel_id, uid, data.get("el"), exclude=websocket)
+                await _award_pizarra(uid)  # insignia de artista de pizarra
             elif t == "points":
                 await board.add_points(
                     channel_id, uid, data.get("id"), data.get("points"), exclude=websocket,

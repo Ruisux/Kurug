@@ -19,7 +19,7 @@ from .database import SessionLocal
 from .models import User, Channel
 from .security import hash_password
 from .board import board as board_manager
-from .routers import auth, channels, ws, users, avatars, presence, dms, music, voice, uploads, gifs, board
+from .routers import auth, channels, ws, users, avatars, banners, presence, dms, music, voice, uploads, gifs, board
 
 
 @asynccontextmanager
@@ -37,6 +37,15 @@ async def lifespan(app: FastAPI):
         named = db.scalar(select(Channel).where(Channel.name == "música"))
         if has_music is None and named is None:
             db.add(Channel(name="música", is_music=True))
+        # El/los admin arrancan con el rango y la insignia de Fundador (como el
+        # mockup). Idempotente: solo pone el rango si aún no tienen uno.
+        from .gamify import grant_badge
+        for admin in db.scalars(select(User).where(User.is_admin.is_(True))).all():
+            if admin.username == settings.bot_username:
+                continue
+            if not admin.rank:
+                admin.rank = "fundador"
+            grant_badge(admin, "fundador")
         db.commit()
     except Exception:
         db.rollback()
@@ -67,6 +76,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(avatars.router)
+app.include_router(banners.router)
 app.include_router(uploads.router)
 app.include_router(gifs.router)
 app.include_router(presence.router)

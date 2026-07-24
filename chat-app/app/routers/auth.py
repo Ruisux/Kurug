@@ -124,6 +124,12 @@ def register(data: UserCreate, db: DbSession):
         email_verified=False,
         is_admin=first_user,
     )
+    # El primer usuario (admin) arranca con el rango y la insignia de Fundador,
+    # como en el mockup (el lifespan solo cubre instalaciones ya existentes).
+    if first_user:
+        from ..gamify import grant_badge
+        user.rank = "fundador"
+        grant_badge(user, "fundador")
     db.add(user)
     try:
         db.commit()

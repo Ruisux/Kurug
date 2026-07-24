@@ -36,6 +36,9 @@ class User(Base):
     # --- Perfil ---
     nickname: Mapped[str | None] = mapped_column(String(32), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Banner de la tarjeta de perfil (imagen ancha 4:1); si no hay, la tarjeta
+    # usa un degradado con el color de acento.
+    banner_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     bio: Mapped[str | None] = mapped_column(String(280), nullable=True)
     accent_color: Mapped[str] = mapped_column(
         String(7), server_default="#d97a4a"
@@ -44,6 +47,18 @@ class User(Base):
     status: Mapped[str] = mapped_column(String(16), server_default="online")
     # Texto libre opcional tipo "trabajando", "jugando", etc.
     custom_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # --- Personalización de perfil (rango, nivel, insignias) ---
+    # Rango asignado por un admin (clave de gamify.RANKS); tiñe el nombre.
+    rank: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Puntos de experiencia acumulados; el nivel se calcula a partir de ellos.
+    xp: Mapped[int] = mapped_column(Integer, server_default="0")
+    # Última vez que se sumó XP por un mensaje (enfriamiento anti-spam).
+    xp_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Insignias obtenidas (lista de claves de gamify.BADGES) como JSON.
+    badges: Mapped[str] = mapped_column(Text, server_default="[]")
 
     # Permisos: el primer usuario registrado se vuelve admin (ver auth.register).
     is_admin: Mapped[bool] = mapped_column(Boolean, server_default="0")

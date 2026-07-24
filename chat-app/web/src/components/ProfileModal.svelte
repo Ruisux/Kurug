@@ -20,6 +20,25 @@
   let busy = false;
   let error = "";
 
+  // Banner de la tarjeta (imagen ancha 4:1).
+  import { mediaUrl } from "../lib/server.js";
+  let bannerPreview = user.banner_url ? mediaUrl(user.banner_url) : null;
+  let bannerFile = null;
+  let bannerRemoved = false;
+  let bannerInput;
+  function pickBanner(e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    bannerFile = f;
+    bannerRemoved = false;
+    bannerPreview = URL.createObjectURL(f);
+  }
+  function clearBanner() {
+    bannerFile = null;
+    bannerRemoved = true;
+    bannerPreview = null;
+  }
+
   function pickFile(e) {
     const f = e.target.files[0];
     if (!f) return;
@@ -32,6 +51,8 @@
     error = "";
     try {
       if (selectedFile) await api.uploadAvatar(selectedFile);
+      if (bannerFile) await api.uploadBanner(bannerFile);
+      else if (bannerRemoved) await api.removeBanner();
       // El color de acento se cambia en Apariencia (aquí estaba duplicado).
       const updated = await api.updateMe({
         nickname: nickname.trim() || null,
@@ -67,6 +88,24 @@
       <button class="x" on:click={onClose} aria-label="Cerrar">
         <i class="ti ti-x"></i>
       </button>
+    </div>
+
+    <!-- Banner: se sube como imagen ancha; el avatar se monta encima como en
+         la tarjeta de perfil. -->
+    <div class="bannerbox">
+      <button
+        class="bannerimg"
+        style={bannerPreview ? `background-image:url(${bannerPreview})` : `--a:${user.accent_color || '#e2553b'}`}
+        class:has={!!bannerPreview}
+        on:click={() => bannerInput.click()}
+        aria-label="Cambiar banner"
+      >
+        {#if !bannerPreview}<span class="bhint"><i class="ti ti-photo"></i> Añadir banner</span>{/if}
+      </button>
+      {#if bannerPreview}
+        <button class="bclear" on:click={clearBanner} title="Quitar banner" aria-label="Quitar banner"><i class="ti ti-x"></i></button>
+      {/if}
+      <input type="file" accept="image/*" bind:this={bannerInput} on:change={pickBanner} hidden />
     </div>
 
     <div class="ident">
@@ -198,6 +237,58 @@
   .x:hover {
     color: var(--tx);
   }
+  /* Banner del perfil (subida). */
+  .bannerbox {
+    position: relative;
+    margin-bottom: 12px;
+  }
+  .bannerimg {
+    width: 100%;
+    height: 92px;
+    border-radius: 12px;
+    border: 1px solid var(--bd2);
+    background-size: cover;
+    background-position: center;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .bannerimg:not(.has) {
+    background:
+      radial-gradient(130% 150% at 82% -20%, color-mix(in srgb, var(--a) 60%, transparent), transparent 62%),
+      linear-gradient(135deg, #3a2016, #241812 72%);
+    color: #f0d9c8;
+  }
+  .bannerimg:hover { border-color: var(--shu); }
+  .bhint {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: #f0d9c8;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 5px 11px;
+    border-radius: 999px;
+  }
+  .bclear {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+  .bclear:hover { background: var(--shu); color: #1c0f0a; }
   .ident {
     display: flex;
     align-items: center;

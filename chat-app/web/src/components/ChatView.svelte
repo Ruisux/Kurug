@@ -6,6 +6,7 @@
   import EmojiPicker from "./EmojiPicker.svelte";
   import GifPicker from "./GifPicker.svelte";
   import { formatTime, uiZoom } from "../lib/ui.js";
+  import { nameColorFor } from "../lib/gamify.js";
   import { jpLabels, channelKanji, decorations } from "../lib/appearance.js";
   import { me } from "../lib/stores.js";
   import { api } from "../lib/api.js";
@@ -39,10 +40,11 @@
   $: userById = new Map(allUsers.map((u) => [u.id, u]));
   $: userByName = new Map(allUsers.map((u) => [u.username, u]));
 
-  // El color de acento de cada quien pinta su nombre en el chat (personalización).
+  // El nombre en el chat se pinta con el color del RANGO si lo tiene, si no con
+  // el color de acento del usuario (personalización).
   function nameColor(m) {
     const u = m.userId != null ? userById.get(m.userId) : userByName.get(m.user);
-    return u?.accent_color || null;
+    return nameColorFor(u);
   }
 
   // --- Separadores de fecha ---

@@ -120,6 +120,35 @@ def _clean_file(data):
     return url[:255], name, size
 
 
+# XP por tiempo en voz: cuándo entró cada quien a una sala (uid -> datetime).
+# Al salir (o desconectar) se convierten los minutos en XP. En memoria: si el
+# server se reinicia con gente en voz, se pierde ese tramo (aceptable).
+_voice_since: dict[int, datetime] = {}
+VOICE_XP_PER_MIN = 3
+VOICE_XP_CAP = 240  # tope por sesión (~80 min), evita farmear dejando la voz abierta
+
+
+async def _award_voice_time(uid: int) -> None:
+    started = _voice_since.pop(uid, None)
+    if started is None:
+        return
+    mins = (datetime.now(timezone.utc) - started).total_seconds() / 60
+    gained = min(VOICE_XP_CAP, int(mins) * VOICE_XP_PER_MIN)
+    if gained <= 0:
+        return
+    from ..gamify import level_from_xp
+    with SessionLocal() as db:
+        u = db.get(User, uid)
+        if u is None:
+            return
+        before = level_from_xp(u.xp)["level"]
+        u.xp = (u.xp or 0) + gained
+        db.commit()
+        db.refresh(u)
+        if level_from_xp(u.xp)["level"] > before:
+            await presence.update_profile(u)
+
+
 def _reactions_for(db, message_id):
     """Reacciones de un mensaje agrupadas por emoji: [{emoji,count,users}]."""
     rows = db.scalars(
@@ -197,9 +226,11 @@ async def presence_ws(websocket: WebSocket, token: str = Query(...)):
                 cid = data.get("channel_id")
                 if isinstance(cid, int):
                     await presence.set_voice(uid, cid)
+                    _voice_since.setdefault(uid, datetime.now(timezone.utc))
 
             elif kind == "voice_leave":
                 await presence.set_voice(uid, None)
+                await _award_voice_time(uid)  # XP por el rato en voz
 
             elif kind == "voice_state":
                 # Micro/auriculares/compartiendo/ping, para la lista de ocupantes.
@@ -243,6 +274,15 @@ async def presence_ws(websocket: WebSocket, token: str = Query(...)):
                         if isinstance(data.get("playing"), bool):
                             act["playing"] = data["playing"]
                     await presence.set_activity(uid, act)
+                    # Insignia de melómano: escuchar música por primera vez.
+                    if act_kind == "music":
+                        from ..gamify import grant_badge
+                        with SessionLocal() as db:
+                            u = db.get(User, uid)
+                            if u is not None and grant_badge(u, "melomano"):
+                                db.commit()
+                                db.refresh(u)
+                                await presence.update_profile(u)
                 else:
                     await presence.set_activity(uid, None)
 
@@ -393,6 +433,7 @@ async def presence_ws(websocket: WebSocket, token: str = Query(...)):
     except WebSocketDisconnect:
         pass
     finally:
+        await _award_voice_time(uid)  # se fue sin "voice_leave": cerrar el tramo
         await presence.disconnect(uid, websocket)
 
 
@@ -590,7 +631,38 @@ async def chat_ws(websocket: WebSocket, channel_id: int, token: str = Query(...)
                 }
                 mid = msg.id
 
+                # --- XP e insignias por participar ---
+                # XP con enfriamiento de 60 s (no premia enviar mil mensajes
+                # seguidos). Insignias: noctámbulo (madrugada) y charlatán (1000).
+                refresh_presence = False
+                from ..gamify import level_from_xp, grant_badge
+                now = datetime.now(timezone.utc)
+                last = u.xp_updated_at
+                if last is not None and last.tzinfo is None:
+                    last = last.replace(tzinfo=timezone.utc)
+                if last is None or (now - last).total_seconds() >= 60:
+                    before = level_from_xp(u.xp)["level"]
+                    u.xp = (u.xp or 0) + 8
+                    u.xp_updated_at = now
+                    if level_from_xp(u.xp)["level"] > before:
+                        refresh_presence = True
+                if datetime.now().hour < 5 and grant_badge(u, "noctambulo"):
+                    refresh_presence = True
+                total_msgs = db.scalar(
+                    select(func.count()).select_from(Message).where(Message.author_id == uid)
+                ) or 0
+                if total_msgs >= 1000 and grant_badge(u, "charlatan"):
+                    refresh_presence = True
+                db.commit()
+
             await manager.broadcast(channel_id, payload)
+            # Si subió de nivel o ganó una insignia, refrescar su presencia para
+            # que las mini-tarjetas y el nombre se actualicen en vivo.
+            if refresh_presence:
+                with SessionLocal() as db2:
+                    fresh = db2.get(User, uid)
+                    if fresh is not None:
+                        await presence.update_profile(fresh)
             # Aviso GLOBAL (por presencia): no leídos + menciones + notificación.
             await presence.broadcast_all({
                 "type": "channel_activity",
