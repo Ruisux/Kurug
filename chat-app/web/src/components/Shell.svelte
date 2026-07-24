@@ -86,27 +86,34 @@
 
   // --- Actividad automática (jugando/escuchando) — app de escritorio ---
   let currentActivity = null; // lo último que detectó el main de Electron
+  // ¿Se puede compartir ESTE tipo de actividad según los toggles del usuario?
+  function allowActivity(a, p = get(prefs)) {
+    if (!a) return false;
+    if (a.kind === "game") return p.shareGameActivity !== false;
+    if (a.kind === "music") return p.shareMusicActivity !== false;
+    return false;
+  }
   function pushActivity() {
     if (!activity.supported) return;
-    if (get(prefs).shareActivity !== false && currentActivity) {
+    if (allowActivity(currentActivity)) {
       presWs?.send({ type: "set_activity", ...currentActivity });
     } else {
-      presWs?.send({ type: "set_activity" }); // limpiar
+      presWs?.send({ type: "set_activity" }); // oculto o sin actividad: limpiar
     }
   }
-  // Reaccionar al toggle de privacidad en vivo.
-  let lastShareActivity = null;
+  // Reaccionar a los toggles de privacidad en vivo. La detección del escritorio
+  // se mantiene encendida si CUALQUIERA de los dos tipos está activo.
+  let lastShareKey = null;
   $: {
-    const share = $prefs.shareActivity !== false;
-    if (activity.supported && share !== lastShareActivity) {
-      if (lastShareActivity !== null) {
-        activity.setEnabled(share);
-        if (!share) {
-          currentActivity = null;
-          pushActivity();
-        }
+    const g = $prefs.shareGameActivity !== false;
+    const m = $prefs.shareMusicActivity !== false;
+    const key = `${g}|${m}`;
+    if (activity.supported && key !== lastShareKey) {
+      if (lastShareKey !== null) {
+        activity.setEnabled(g || m);
+        pushActivity(); // re-evaluar lo que se ve con los toggles nuevos
       }
-      lastShareActivity = share;
+      lastShareKey = key;
     }
   }
 
@@ -148,6 +155,33 @@
   let dmUnread = {};
   const DM_LASTREAD_KEY = "kurug-dm-lastread";
   let dmLastRead = loadDmLastRead();
+
+  // DMs ocultos de la lista izquierda (solo se quitan de la vista, el historial
+  // NO se borra). Reaparecen si llega un mensaje nuevo o si abres la conversación.
+  const DM_HIDDEN_KEY = "kurug-hidden-dms";
+  let hiddenDms = loadHiddenDms();
+  function loadHiddenDms() {
+    try { return new Set(JSON.parse(localStorage.getItem(DM_HIDDEN_KEY)) || []); }
+    catch { return new Set(); }
+  }
+  function saveHiddenDms() {
+    try { localStorage.setItem(DM_HIDDEN_KEY, JSON.stringify([...hiddenDms])); } catch {}
+  }
+  function hideDm(partnerId) {
+    hiddenDms.add(partnerId);
+    hiddenDms = hiddenDms; // reactividad
+    saveHiddenDms();
+    // Si estabas viendo esa conversación, salir a un canal de texto.
+    if (view.kind === "dm" && view.user.id === partnerId) {
+      const c = channels.find((x) => x.kind !== "voice" && !x.is_music) || channels.find((x) => x.kind !== "voice");
+      if (c) openChannel(c.id); else view = { kind: "none" };
+    }
+  }
+  function unhideDm(partnerId) {
+    if (hiddenDms.delete(partnerId)) { hiddenDms = hiddenDms; saveHiddenDms(); }
+  }
+  // Lo que ve la lista: conversaciones no ocultas.
+  $: visibleDms = dmConvos.filter((c) => !hiddenDms.has(c.user.id));
 
   function loadDmLastRead() {
     try {
@@ -334,7 +368,8 @@
         currentActivity = act;
         pushActivity();
       });
-      activity.setEnabled(get(prefs).shareActivity !== false);
+      const p0 = get(prefs);
+      activity.setEnabled(p0.shareGameActivity !== false || p0.shareMusicActivity !== false);
     }
     initNotifications();
     // Conexión de música global: el estado persiste por toda la app.
@@ -378,6 +413,7 @@
   async function openDm(user) {
     chatWs?.close();
     chatWs = null;
+    unhideDm(user.id); // abrir una conversación oculta la vuelve a mostrar
     view = { kind: "dm", user };
     typingUsers = {};
     lastTypingSent = 0;
@@ -489,6 +525,7 @@
         messages = [...messages, normDm(m)];
       }
       if (m.sender_id !== meUser.id) {
+        unhideDm(partner); // un mensaje nuevo re-muestra la conversación oculta
         const viewingThis = view.kind === "dm" && view.user.id === partner;
         if (viewingThis && document.hasFocus()) {
           markDmRead(partner, m.id); // lo estás leyendo ahora mismo
@@ -623,7 +660,8 @@
       {currentDmUserId}
       {unread}
       {dmUnread}
-      dms={dmConvos}
+      dms={visibleDms}
+      onHideDm={hideDm}
       {dmStatus}
       isAdmin={$me.is_admin}
       {online}

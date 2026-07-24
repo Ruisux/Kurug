@@ -2,7 +2,7 @@
   // Tarjeta de perfil (clic IZQUIERDO en un usuario): avatar grande, estado,
   // bio, actividad y botón para abrir el chat privado. El clic derecho sigue
   // abriendo el menú de voz (UserMenu).
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import Avatar from "./Avatar.svelte";
   import { api } from "../lib/api.js";
   import { me } from "../lib/stores.js";
@@ -36,6 +36,28 @@
     try { full = await api.user(user.id); } catch {}
   });
   $: info = { ...(full || {}), ...user };
+
+  // --- Progreso de Spotify (interpolado en el cliente) ---
+  // El escritorio manda UNA foto por canción: posición (position_ms) tomada en
+  // el instante `at`. Aquí avanzamos ese reloj localmente cada segundo mientras
+  // la tarjeta está abierta, para ver "en qué minuto va" sin reenviar nada.
+  $: music = activity && activity.kind === "music" && activity.title ? activity : null;
+  let nowT = Date.now();
+  let ticker = null;
+  onMount(() => { ticker = setInterval(() => (nowT = Date.now()), 1000); });
+  onDestroy(() => clearInterval(ticker));
+  $: elapsed = music && music.position_ms != null
+    ? Math.max(0, Math.min(
+        music.duration_ms ?? Infinity,
+        music.position_ms + (music.playing === false ? 0 : nowT - (music.at ?? nowT)),
+      ))
+    : null;
+  $: progress = music && music.duration_ms ? Math.min(1, (elapsed ?? 0) / music.duration_ms) : 0;
+  function mmss(ms) {
+    if (ms == null || !isFinite(ms)) return "";
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
 </script>
 
 <div class="backdrop" on:click={onClose} on:contextmenu|preventDefault={onClose} role="presentation"></div>
@@ -62,7 +84,28 @@
       {#if info.custom_status}<span class="cst">· {info.custom_status}</span>{/if}
     </div>
 
-    {#if activity}
+    {#if music}
+      <!-- Tarjeta de Spotify: carátula, canción, artista y progreso. -->
+      <div class="spotify">
+        <div class="cover">
+          {#if music.art}
+            <img src={music.art} alt="Carátula" />
+          {:else}
+            <i class="ti ti-music"></i>
+          {/if}
+        </div>
+        <div class="sinfo">
+          <div class="slabel"><i class="ti ti-brand-spotify"></i> Escuchando en Spotify</div>
+          <div class="stitle" title={music.title}>{music.title}</div>
+          {#if music.artist}<div class="sartist" title={music.artist}>{music.artist}</div>{/if}
+          {#if music.album}<div class="salbum" title={music.album}>{music.album}</div>{/if}
+          {#if music.duration_ms}
+            <div class="sbar"><span style="width:{progress * 100}%"></span></div>
+            <div class="stime"><span>{mmss(elapsed)}</span><span>{mmss(music.duration_ms)}</span></div>
+          {/if}
+        </div>
+      </div>
+    {:else if activity}
       <div class="act">
         <i class="ti {activity.kind === 'game' ? 'ti-device-gamepad-2' : 'ti-music'}"></i>
         <span>{activity.kind === "game" ? "Jugando a" : "Escuchando"} <b>{activity.text}</b></span>
@@ -192,6 +235,93 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+  /* Tarjeta de Spotify: carátula + info + barra de progreso. */
+  .spotify {
+    display: flex;
+    gap: 11px;
+    background: rgba(30, 215, 96, 0.09);
+    border: 1px solid rgba(30, 215, 96, 0.28);
+    border-radius: 11px;
+    padding: 10px;
+  }
+  .cover {
+    width: 62px;
+    height: 62px;
+    flex: none;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(30, 215, 96, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #1ed760;
+    font-size: 26px;
+  }
+  .cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .sinfo {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .slabel {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #1ed760;
+    text-transform: uppercase;
+  }
+  .stitle {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--tx);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sartist,
+  .salbum {
+    font-size: 11.5px;
+    color: var(--mut);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .salbum {
+    color: var(--fnt);
+    font-size: 10.5px;
+  }
+  .sbar {
+    margin-top: 5px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    overflow: hidden;
+  }
+  .sbar span {
+    display: block;
+    height: 100%;
+    background: #1ed760;
+    border-radius: 999px;
+    transition: width 0.9s linear;
+  }
+  .stime {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--fnt);
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
   }
   .bio {
     font-size: 12.5px;

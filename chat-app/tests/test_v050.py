@@ -266,6 +266,48 @@ def test_activity_set_broadcast_and_preserved(client):
             assert upd["user"]["activity"] is None
 
 
+def test_activity_music_enriched(client):
+    """La música enriquecida (Spotify) conserva título/artista/álbum/carátula y
+    progreso; la carátula gigante y un `at` inválido se descartan."""
+    ta = register_token(client, "alice")
+    tb = register_token(client, "bob")
+    with client.websocket_connect(f"/ws/presence?token={ta}") as wsa:
+        wsa.receive_json()
+        with client.websocket_connect(f"/ws/presence?token={tb}") as wsb:
+            wsb.receive_json()
+            _drain_until(wsa, "presence_update")
+
+            wsb.send_json({
+                "type": "set_activity", "kind": "music",
+                "text": "Tame Impala - The Less I Know The Better",
+                "title": "The Less I Know The Better", "artist": "Tame Impala",
+                "album": "Currents", "art": "data:image/png;base64,QUJD",
+                "duration_ms": 216000, "position_ms": 74000,
+                "at": 1_750_000_000_000, "playing": True,
+            })
+            act = _drain_until(wsa, "presence_update")["user"]["activity"]
+            assert act["title"] == "The Less I Know The Better"
+            assert act["artist"] == "Tame Impala"
+            assert act["album"] == "Currents"
+            assert act["art"] == "data:image/png;base64,QUJD"
+            assert act["duration_ms"] == 216000
+            assert act["position_ms"] == 74000
+            assert act["at"] == 1_750_000_000_000  # epoch ms aceptado
+            assert act["playing"] is True
+
+            # Carátula gigante (>300 KB) y `at` fuera de rango se descartan; el
+            # resto de la música sigue llegando.
+            wsb.send_json({
+                "type": "set_activity", "kind": "music", "text": "X - Y",
+                "title": "Y", "art": "data:image/png;base64," + "A" * 400_000,
+                "at": 9_999_999_999_999_999,
+            })
+            act = _drain_until(wsa, "presence_update")["user"]["activity"]
+            assert act["title"] == "Y"
+            assert "art" not in act
+            assert "at" not in act
+
+
 # ---------------- Voz: sharing y rtt en la presencia ----------------
 
 def test_voice_state_sharing_and_rtt(client):

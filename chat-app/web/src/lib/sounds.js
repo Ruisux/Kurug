@@ -5,10 +5,11 @@ import { prefs } from "./prefs.js";
 
 let ctx = null;
 
-// Multiplicador maestro: los tonos base eran demasiado suaves (0.05-0.08) y se
-// escuchaban muy bajo. Subimos todo ~2.6x aquí en un solo sitio; si algún día se
-// quiere un control de volumen de efectos en ajustes, basta con tocar este valor.
-const MASTER = 2.6;
+// Multiplicador maestro: los tonos base eran demasiado suaves y se escuchaban
+// muy bajo. Subido a 4.2 para que se distinga bien CADA acción (el usuario
+// quería oírlas más fuerte); si algún día se quiere un control de volumen de
+// efectos en ajustes, basta con tocar este valor.
+const MASTER = 4.2;
 
 function ac() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -47,9 +48,11 @@ const SOUNDS = {
   // Compartir pantalla: empezar = sube; dejar de compartir = baja.
   shareStart: () => blip([494, 659, 988], { gain: 0.06, dur: 0.12 }),
   shareStop: () => blip([988, 659, 440], { gain: 0.055, dur: 0.12 }),
-  // Notificaciones (gate aparte: notificationSound).
-  notify: () => blip([880, 1175], { gain: 0.05, dur: 0.12 }),         // ding suave
-  mention: () => blip([784, 1047, 1319], { gain: 0.08, dur: 0.13 }),  // 3 notas, más presente
+  // Notificaciones (gate aparte: notificationSound). Timbre TRIANGLE y ritmo
+  // rápido "di-dit" para que NO se confunda con el "join" (dos senos lentos
+  // ascendentes): aquí es agudo, corto y con otro color de sonido.
+  notify: () => blip([1318, 1046], { gain: 0.07, dur: 0.1, type: "triangle" }),  // di-dit descendente
+  mention: () => blip([1046, 1318, 1760], { gain: 0.085, dur: 0.12, type: "triangle" }), // 3 notas brillantes
 };
 
 // Sonidos que dependen de la preferencia de NOTIFICACIONES, no de los efectos UI.

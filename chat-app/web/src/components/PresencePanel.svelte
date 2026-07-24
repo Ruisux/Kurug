@@ -22,11 +22,12 @@
   // botón "Enviar mensaje" de la tarjeta sigue haciendo eso).
   let profile = null; // { user, x, y }
   function openProfile(e, u) {
-    if (u.id === $me.id) return;
+    // Se puede ver el perfil PROPIO (para revisar cómo te ven los demás); la
+    // tarjeta ya oculta el volumen y "Enviar mensaje" cuando eres tú.
     // El perfil guardado trae un `status` de preferencia; si NO está conectado,
     // la tarjeta debe decir "Desconectado" (no ese estado guardado).
     profile = {
-      user: u.connected ? u : { ...u, status: "offline" },
+      user: u.connected || u.id === $me.id ? u : { ...u, status: "offline" },
       x: e.clientX,
       y: e.clientY,
     };
@@ -64,8 +65,7 @@
       <button
         class="card"
         style="--ac:{u.accent_color || 'var(--shu)'}"
-        disabled={u.id === $me.id}
-        title={u.id === $me.id ? "Eres tú" : `Perfil de ${u.display_name} · clic derecho para opciones de voz`}
+        title={u.id === $me.id ? "Tu perfil" : `Perfil de ${u.display_name} · clic derecho para opciones de voz`}
         on:click={(e) => openProfile(e, u)}
         on:contextmenu={(e) => openMenu(e, u)}
       >

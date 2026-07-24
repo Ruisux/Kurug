@@ -218,7 +218,31 @@ async def presence_ws(websocket: WebSocket, token: str = Query(...)):
                 act_kind = data.get("kind")
                 text = (data.get("text") or "").strip()[:128]
                 if act_kind in ("game", "music") and text:
-                    await presence.set_activity(uid, {"kind": act_kind, "text": text})
+                    act = {"kind": act_kind, "text": text}
+                    # Enriquecimiento de la música (Spotify): título, artista,
+                    # álbum, carátula y progreso. Todo opcional y acotado; la
+                    # carátula viaja como data URI (se limita el tamaño para no
+                    # inflar el broadcast de presencia en memoria).
+                    if act_kind == "music":
+                        for f in ("title", "artist", "album"):
+                            v = data.get(f)
+                            if isinstance(v, str) and v.strip():
+                                act[f] = v.strip()[:128]
+                        art = data.get("art")
+                        if isinstance(art, str) and art.startswith(("data:image/", "https://")) and len(art) <= 300_000:
+                            act["art"] = art
+                        for f in ("duration_ms", "position_ms"):
+                            v = data.get(f)
+                            if isinstance(v, (int, float)) and 0 <= v <= 4_320_000_000:  # ≤ 50 días en ms
+                                act[f] = int(v)
+                        # `at` es una marca de tiempo epoch en ms (~1.7e12), no
+                        # una duración: su tope es mucho mayor (año ~2100).
+                        at = data.get("at")
+                        if isinstance(at, (int, float)) and 0 <= at <= 4_200_000_000_000:
+                            act["at"] = int(at)
+                        if isinstance(data.get("playing"), bool):
+                            act["playing"] = data["playing"]
+                    await presence.set_activity(uid, act)
                 else:
                     await presence.set_activity(uid, None)
 

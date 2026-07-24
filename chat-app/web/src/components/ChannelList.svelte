@@ -46,6 +46,7 @@
   export let onSelectVoice = () => {};     // canal de VOZ -> se une a la voz
   export let onSelectDm = () => {};
   export let onCreate = () => {};          // (name, kind)
+  export let onHideDm = () => {};          // quitar un DM de la lista (no borra)
   export let onDeleteChannel = () => {};
   export let onReorder = () => {};         // (orderedIds)
 
@@ -272,18 +273,27 @@
       <div class="ink"><svg viewBox="0 0 200 6" preserveAspectRatio="none" aria-hidden="true"><path d="M2 3 C40 1 70 5 110 3 S180 4 198 2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></div>
       <div class="lbl">Directos{#if $jpLabels}<span class="lk">ダイレクト</span>{/if}</div>
       {#each sortedDms as d (d.user.id)}
-        <button
-          class="ch dm"
-          class:on={d.user.id === currentDmUserId}
-          class:unread={dmUnread[d.user.id] > 0}
-          on:click={() => onSelectDm(d.user)}
-        >
-          <Avatar name={d.user.display_name} url={d.user.avatar_url} size={20} status={dmStatus[d.user.id] || "offline"} />
-          <span class="dmname">{d.user.display_name}</span>
-          {#if dmUnread[d.user.id] > 0}
-            <span class="badge">{dmUnread[d.user.id] > 99 ? "99+" : dmUnread[d.user.id]}</span>
-          {/if}
-        </button>
+        <div class="dmrow" class:on={d.user.id === currentDmUserId}>
+          <button
+            class="ch dm"
+            class:unread={dmUnread[d.user.id] > 0}
+            on:click={() => onSelectDm(d.user)}
+          >
+            <Avatar name={d.user.display_name} url={d.user.avatar_url} size={20} status={dmStatus[d.user.id] || "offline"} />
+            <span class="dmname">{d.user.display_name}</span>
+            {#if dmUnread[d.user.id] > 0}
+              <span class="badge">{dmUnread[d.user.id] > 99 ? "99+" : dmUnread[d.user.id]}</span>
+            {/if}
+          </button>
+          <button
+            class="dmhide"
+            title="Quitar de la lista (no borra el historial)"
+            aria-label="Quitar de la lista"
+            on:click|stopPropagation={() => onHideDm(d.user.id)}
+          >
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
       {/each}
     {/if}
 
@@ -545,6 +555,7 @@
     color: var(--tx);
   }
   .row.on .ch,
+  .dmrow.on .ch,
   .ch.on {
     color: var(--tx);
   }
@@ -684,8 +695,42 @@
     justify-content: center;
     line-height: 1;
   }
+  /* Fila de DM: el chat + una X para quitarlo de la lista (aparece al hover). */
+  .dmrow {
+    display: flex;
+    align-items: center;
+    border-radius: 11px;
+  }
+  .dmrow.on {
+    background: var(--hover);
+  }
+  .dmrow:hover {
+    background: var(--hover);
+  }
   .ch.dm {
-    flex: 0 0 auto; /* en la columna de Directos no debe crecer en vertical */
+    flex: 1; /* ocupa el ancho; la X va a su derecha */
+  }
+  .dmhide {
+    flex: none;
+    background: none;
+    border: none;
+    color: var(--fnt);
+    width: 26px;
+    height: 26px;
+    margin-right: 6px;
+    border-radius: 7px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 15px;
+  }
+  .dmrow:hover .dmhide {
+    display: flex;
+  }
+  .dmhide:hover {
+    color: var(--shu);
+    background: rgba(var(--shu-rgb), 0.12);
   }
   .dmname {
     flex: 1; /* empuja el badge de no-leídos al borde derecho */

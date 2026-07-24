@@ -219,18 +219,67 @@ let activityTimer = null;
 let activityFails = 0;
 let lastActivity = "";
 
+// Script de PowerShell que devuelve, en UNA sola llamada:
+//  - procs: procesos con ventana (para detectar juegos con el dict GAMES en JS)
+//  - media: metadatos de Spotify vía GSMTC (los "controles de medios del
+//    sistema" de Windows), con título, artista, álbum, CARÁTULA (base64) y
+//    posición/duración. Todo el bloque de media va en try/catch: si WinRT
+//    falla en esa máquina, `media` es null y se cae al método del título de
+//    ventana (que sigue dando "Artista - Canción"), sin romper nada.
+const ACTIVITY_PS = `
+$ErrorActionPreference='SilentlyContinue'
+$procs = Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object Name,MainWindowTitle
+$media = $null
+try {
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime
+  $ext = [System.WindowsRuntimeSystemExtensions]
+  $asTask = ($ext.GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
+  function Await($op,$t){ $m=$asTask.MakeGenericMethod($t); $tk=$m.Invoke($null,@($op)); [void]$tk.Wait(5000); $tk.Result }
+  [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media.Control,ContentType=WindowsRuntime] > $null
+  [Windows.Storage.Streams.DataReader,Windows.Storage.Streams,ContentType=WindowsRuntime] > $null
+  $mgr = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
+  $sess = $null
+  foreach($x in $mgr.GetSessions()){ if($x.SourceAppUserModelId -match 'Spotify'){ $sess=$x; break } }
+  if($sess){
+    $p = Await ($sess.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
+    $tl = $sess.GetTimelineProperties()
+    $pb = $sess.GetPlaybackInfo()
+    $art = ''
+    try {
+      if($p.Thumbnail){
+        $st = Await ($p.Thumbnail.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
+        $sz = [uint32]$st.Size
+        if($sz -gt 0 -and $sz -lt 400000){
+          $rd = [Windows.Storage.Streams.DataReader]::new($st)
+          [void](Await ($rd.LoadAsync($sz)) ([uint32]))
+          $bytes = New-Object byte[] $sz
+          $rd.ReadBytes($bytes)
+          $art = 'data:image/jpeg;base64,'+[Convert]::ToBase64String($bytes)
+        }
+      }
+    } catch {}
+    $media = [pscustomobject]@{
+      title=$p.Title; artist=$p.Artist; album=$p.AlbumTitle;
+      durationMs=[int64]$tl.EndTime.TotalMilliseconds;
+      positionMs=[int64]$tl.Position.TotalMilliseconds;
+      playing=($pb.PlaybackStatus -eq [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus]::Playing);
+      art=$art
+    }
+  }
+} catch {}
+[pscustomobject]@{ procs=@($procs); media=$media } | ConvertTo-Json -Compress -Depth 4
+`;
+
 function detectActivity() {
-  const args = [
-    "-NoProfile", "-Command",
-    "Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object Name,MainWindowTitle | ConvertTo-Json -Compress",
-  ];
+  // -EncodedCommand (base64 UTF-16LE) evita el infierno de comillas y funciona
+  // desde el asar empaquetado (no hay que escribir un .ps1 a disco).
+  const encoded = Buffer.from(ACTIVITY_PS, "utf16le").toString("base64");
+  const args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded];
   execFile(
     "powershell.exe", args,
-    { windowsHide: true, timeout: 10_000, maxBuffer: 4 * 1024 * 1024 },
+    { windowsHide: true, timeout: 12_000, maxBuffer: 8 * 1024 * 1024 },
     (err, stdout) => {
       if (err) {
-        // PowerShell bloqueado o colgado: tras 5 fallos seguidos dejamos de
-        // insistir (la actividad simplemente no se detecta en esa máquina).
         activityFails += 1;
         if (activityFails >= 5 && activityTimer) {
           clearInterval(activityTimer);
@@ -240,24 +289,51 @@ function detectActivity() {
         return;
       }
       activityFails = 0;
-      let list;
+      let data;
       try {
-        list = JSON.parse(stdout || "[]");
+        data = JSON.parse(stdout || "{}");
       } catch {
         return;
       }
-      if (!Array.isArray(list)) list = [list]; // un solo proceso -> objeto suelto
+      let procs = data?.procs || [];
+      if (!Array.isArray(procs)) procs = [procs];
+      const media = data?.media || null;
+
+      // Juego: dict curado sobre el nombre del proceso.
       let game = null;
-      let music = null;
-      for (const p of list || []) {
+      let spotifyTitle = null; // respaldo por título de ventana
+      for (const p of procs) {
         const name = String(p?.Name || "").toLowerCase();
         const title = String(p?.MainWindowTitle || "");
         if (GAMES[name]) game = { kind: "game", text: GAMES[name] };
-        else if (name === "spotify" && title.includes(" - "))
-          music = { kind: "music", text: title.slice(0, 120) };
+        else if (name === "spotify" && title.includes(" - ")) spotifyTitle = title.slice(0, 120);
       }
+
+      // Música: si GSMTC dio metadatos, actividad ENRIQUECIDA; si no, el título.
+      let music = null;
+      if (media && media.title) {
+        const text = media.artist ? `${media.artist} - ${media.title}` : media.title;
+        music = {
+          kind: "music", text: text.slice(0, 128),
+          title: media.title, artist: media.artist || "", album: media.album || "",
+          art: typeof media.art === "string" && media.art.startsWith("data:image/") ? media.art : "",
+          duration_ms: Number(media.durationMs) || 0,
+          position_ms: Number(media.positionMs) || 0,
+          playing: media.playing !== false,
+          at: Date.now(), // instante en que se tomó la posición (el cliente interpola)
+        };
+      } else if (spotifyTitle) {
+        music = { kind: "music", text: spotifyTitle };
+      }
+
       const act = game || music || null; // como Discord: el juego manda
-      const key = act ? `${act.kind}|${act.text}` : "";
+      // La clave de dedupe NO incluye la posición (solo emitimos por canción /
+      // play-pause): el cliente avanza el reloj él solo.
+      const key = act
+        ? act.kind === "music"
+          ? `music|${act.text}|${act.playing !== false}`
+          : `game|${act.text}`
+        : "";
       if (key !== lastActivity) {
         lastActivity = key;
         mainWindow?.webContents.send("activity:update", act);

@@ -45,6 +45,42 @@
     return u?.accent_color || null;
   }
 
+  // --- Separadores de fecha ---
+  // Antes solo se veía la hora, así que mensajes de días distintos parecían del
+  // mismo día en horas al azar. Ahora se pinta una línea con la fecha cada vez
+  // que cambia el día, estilo Discord ("Hoy", "Ayer", o la fecha completa).
+  function dayKey(iso) {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }
+  function dayLabel(iso) {
+    const d = new Date(iso);
+    const now = new Date();
+    const key = dayKey(iso);
+    if (key === dayKey(now)) return "Hoy";
+    const ayer = new Date(now); ayer.setDate(now.getDate() - 1);
+    if (key === dayKey(ayer)) return "Ayer";
+    const sameYear = d.getFullYear() === now.getFullYear();
+    return d.toLocaleDateString("es", {
+      weekday: "long", day: "numeric", month: "long",
+      ...(sameYear ? {} : { year: "numeric" }),
+    });
+  }
+  // ¿Este mensaje abre un día nuevo respecto al anterior? (el primero siempre).
+  function newDay(m, i) {
+    if (i === 0) return true;
+    return dayKey(m.created_at) !== dayKey(messages[i - 1].created_at);
+  }
+  // Fecha + hora completa para el tooltip de la hora.
+  function fullStamp(iso) {
+    try {
+      return new Date(iso).toLocaleString("es", {
+        weekday: "long", day: "numeric", month: "long", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      });
+    } catch { return ""; }
+  }
+
   // --- Agrupación estilo Discord: mensajes seguidos del mismo autor no
   // repiten avatar ni nombre; tras una pausa larga vuelve la cabecera. ---
   const GROUP_MS = 7 * 60 * 1000;
@@ -53,7 +89,7 @@
     return m.user ?? m.userId;
   }
   function isGrouped(m, i) {
-    if (i === 0 || m.replyTo) return false; // una respuesta siempre lleva cabecera
+    if (i === 0 || m.replyTo || newDay(m, i)) return false; // cabecera al abrir día
     const prev = messages[i - 1];
     if (authorKey(m) !== authorKey(prev)) return false;
     return new Date(m.created_at) - new Date(prev.created_at) < GROUP_MS;
@@ -241,22 +277,38 @@
     });
   }
 
-  // Divide el texto en trozos, marcando las menciones válidas (resaltado).
+  // Divide el texto en trozos, marcando menciones (resaltado) y enlaces
+  // (clickables). Un solo escaneo con las dos expresiones a la vez: en cada
+  // vuelta se toma la coincidencia MÁS TEMPRANA, así una URL con @ dentro no
+  // se parte por la mitad.
+  const URL_RE = /\bhttps?:\/\/[^\s<]+[^\s<.,;:!?)"'\]]/gi;
+  const MENTION_RE = /@(\w+)/g;
   function contentSegments(text) {
     const parts = [];
-    const re = /@(\w+)/g;
-    let last = 0, m;
-    while ((m = re.exec(text))) {
-      if (m.index > last) parts.push({ t: text.slice(last, m.index) });
-      const name = m[1].toLowerCase();
-      if (name === "everyone" || name === "todos")
-        parts.push({ t: m[0], mention: true, me: true });
-      else if (usernameSet.has(name))
-        parts.push({ t: "@" + m[1], mention: true, me: name === myName });
-      else parts.push({ t: m[0] });
-      last = m.index + m[0].length;
+    let i = 0;
+    while (i < text.length) {
+      URL_RE.lastIndex = i;
+      MENTION_RE.lastIndex = i;
+      const url = URL_RE.exec(text);
+      const men = MENTION_RE.exec(text);
+      // La siguiente coincidencia (la de menor índice) gana.
+      let next = null, kind = null;
+      if (url && (!men || url.index <= men.index)) { next = url; kind = "url"; }
+      else if (men) { next = men; kind = "mention"; }
+      if (!next) { parts.push({ t: text.slice(i) }); break; }
+      if (next.index > i) parts.push({ t: text.slice(i, next.index) });
+      if (kind === "url") {
+        parts.push({ t: next[0], url: next[0] });
+      } else {
+        const name = next[1].toLowerCase();
+        if (name === "everyone" || name === "todos")
+          parts.push({ t: next[0], mention: true, me: true });
+        else if (usernameSet.has(name))
+          parts.push({ t: "@" + next[1], mention: true, me: name === myName });
+        else parts.push({ t: next[0] });
+      }
+      i = next.index + next[0].length;
     }
-    if (last < text.length) parts.push({ t: text.slice(last) });
     return parts;
   }
   let replying = null; // { id, name, content }
@@ -421,35 +473,56 @@
     return n.length > 38 ? n.slice(0, 22) + "…" + n.slice(-12) : n;
   }
 
-  async function scrollToBottom() {
-    await tick();
+  // --- Scroll: mantenerse pegado al fondo ---
+  // El chat sigue "enganchado" al último mensaje mientras el usuario no suba a
+  // leer historial. La clave es un ResizeObserver: cuando el contenido crece
+  // (llega un mensaje, o —el caso que daba saltos— una imagen termina de
+  // cargar DESPUÉS de cambiar de canal), si estamos enganchados volvemos al
+  // fondo al instante. Así "no se sube ni se baja solo": o estás abajo del
+  // todo, o estás donde tú decidiste subir.
+  let pinned = true;      // ¿pegado al fondo?
+  let scrollKey = null;   // identifica el canal/DM actual
+  function nearBottom() {
+    return !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+  }
+  function toBottom() {
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }
-
-  // Autoscroll SOLO cuando toca: al cambiar de canal/DM o cuando llega un
-  // mensaje NUEVO estando ya abajo (o siendo mío). Antes cualquier cambio en
-  // la lista (una reacción, una edición, un pin) te arrastraba al final aunque
-  // estuvieras leyendo mensajes viejos arriba.
-  let scrollKey = null;   // identifica el canal/DM actual
-  let lastMsgId = null;   // último mensaje visto (para detectar los nuevos)
-  function nearBottom() {
-    return !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 140;
+  function onScroll() {
+    // Lo mueve el usuario: si vuelve al fondo se re-engancha; si sube, se suelta.
+    pinned = nearBottom();
   }
-  function autoScroll(msgs, hdr, chId, dmId) {
+  // Acción sobre el contenedor: observa el tamaño del contenido y re-pega.
+  function stickBottom(node) {
+    const ro = new ResizeObserver(() => { if (pinned) toBottom(); });
+    // Observamos el contenido interior (crece con cada mensaje/imagen).
+    for (const child of node.children) ro.observe(child);
+    const mo = new MutationObserver(() => {
+      for (const child of node.children) ro.observe(child);
+      if (pinned) toBottom();
+    });
+    mo.observe(node, { childList: true });
+    node.addEventListener("scroll", onScroll, { passive: true });
+    return {
+      destroy() {
+        ro.disconnect();
+        mo.disconnect();
+        node.removeEventListener("scroll", onScroll);
+      },
+    };
+  }
+  // Al cambiar de canal/DM: enganchar y bajar del todo (dos frames, por si el
+  // layout aún no cuajó). El ResizeObserver se encarga de las imágenes tardías.
+  async function onViewChange(hdr, chId, dmId) {
     const key = `${hdr.kind}:${chId ?? ""}:${dmId ?? ""}`;
-    const last = msgs.length ? msgs[msgs.length - 1].id : null;
-    if (key !== scrollKey) {
-      scrollKey = key;
-      lastMsgId = last;
-      scrollToBottom();
-      return;
-    }
-    if (last === lastMsgId) return; // reacción/edición/pin: no tocar el scroll
-    const stick = nearBottom() || !!msgs[msgs.length - 1]?.mine; // decidir ANTES de que crezca el DOM
-    lastMsgId = last;
-    if (stick) scrollToBottom();
+    if (key === scrollKey) return;
+    scrollKey = key;
+    pinned = true;
+    await tick();
+    toBottom();
+    requestAnimationFrame(toBottom);
   }
-  $: autoScroll(messages, header, channelId, dmUserId);
+  $: onViewChange(header, channelId, dmUserId);
 
   $: active = header.kind !== "none";
   $: placeholder =
@@ -593,12 +666,15 @@
     <VoicePanel {online} />
   {/if}
 
-  <div class="messages" bind:this={scroller}>
+  <div class="messages" bind:this={scroller} use:stickBottom>
     {#each messages as m, i (m.id)}
+      {#if newDay(m, i)}
+        <div class="daysep"><span>{dayLabel(m.created_at)}</span></div>
+      {/if}
       <article class="msg" class:flash={flashId === m.id} class:grouped={isGrouped(m, i)} data-mid={m.id}>
         {#if isGrouped(m, i)}
           <!-- Hueco del avatar: la hora aparece solo al pasar el mouse. -->
-          <span class="gutter"><span class="gtime">{formatTime(m.created_at)}</span></span>
+          <span class="gutter"><span class="gtime" title={fullStamp(m.created_at)}>{formatTime(m.created_at)}</span></span>
         {:else}
           <button class="avlink" title="Ver perfil de {m.name}" on:click={(e) => openProfile(e, m)}>
             <Avatar name={m.name} url={m.avatar} size={40} />
@@ -615,7 +691,7 @@
           {#if !isGrouped(m, i)}
           <div class="meta">
             <button class="author" class:mine={m.mine} style={nameColor(m) ? `color: ${nameColor(m)}` : ""} title="Ver perfil de {m.name}" on:click={(e) => openProfile(e, m)}>{m.name}</button>
-            <span class="time">{formatTime(m.created_at)}</span>
+            <span class="time" title={fullStamp(m.created_at)}>{formatTime(m.created_at)}</span>
             {#if m.edited}<span class="edited">(editado)</span>{/if}
             {#if m.pinned}<span class="pinmark"><i class="ti ti-pin"></i> fijado</span>{/if}
           </div>
@@ -630,7 +706,7 @@
             <input class="editinput" bind:value={editDraft} on:keydown={(e) => editKey(e, m)} autofocus />
             <div class="edithint">Enter para guardar · Esc para cancelar</div>
           {:else}
-            {#if m.content}<div class="text">{#each contentSegments(m.content) as s}{#if s.mention}<span class="mention" class:me={s.me}>{s.t}</span>{:else}{s.t}{/if}{/each}</div>{/if}
+            {#if m.content}<div class="text">{#each contentSegments(m.content) as s}{#if s.mention}<span class="mention" class:me={s.me}>{s.t}</span>{:else if s.url}<a class="link" href={s.url} target="_blank" rel="noopener noreferrer nofollow">{s.t}</a>{:else}{s.t}{/if}{/each}</div>{/if}
             {#if m.image}
               <button class="imgwrap" on:click={() => (lightbox = m.image)} aria-label="Ampliar imagen">
                 <img src={mediaUrl(m.image)} alt="imagen adjunta" loading="lazy" />
@@ -1068,6 +1144,32 @@
     overflow: hidden;
     text-overflow: ellipsis;
     opacity: 0.85;
+  }
+  /* Separador de día: una línea con la fecha centrada (Hoy / Ayer / fecha). */
+  .daysep {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 14px 4px 6px;
+    color: var(--fnt);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: capitalize;
+  }
+  .daysep::before,
+  .daysep::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--bd);
+  }
+  .daysep span {
+    flex: none;
+    padding: 2px 10px;
+    border: 1px solid var(--bd);
+    border-radius: 999px;
+    background: var(--pan);
   }
   .meta {
     display: flex;
@@ -1526,6 +1628,15 @@
   }
   .mention.me {
     background: rgba(var(--shu-rgb), 0.22);
+  }
+  /* Enlaces dentro de un mensaje: con el color de acento y subrayado al hover. */
+  .text .link {
+    color: var(--shu);
+    text-decoration: none;
+    word-break: break-all;
+  }
+  .text .link:hover {
+    text-decoration: underline;
   }
   /* Autocompletado de menciones sobre el compositor */
   .mention-pop {

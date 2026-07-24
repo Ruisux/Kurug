@@ -13,7 +13,10 @@ const defaults = {
   krisp: true,              // supresión de ruido (RNNoise local; la clave se llama "krisp" por herencia)
   noiseGate: "medio",       // puerta de ruido tras RNNoise: off | suave | medio | fuerte
   soundsEnabled: true,      // efectos de UI (mute, entrar, salir…)
-  shareActivity: true,      // publicar "jugando X / escuchando Y" (solo escritorio)
+  // Actividad automática (solo escritorio). Dos interruptores independientes:
+  // se puede compartir la música y ocultar el juego, o al revés.
+  shareGameActivity: true,  // publicar "jugando X"
+  shareMusicActivity: true, // publicar "escuchando Y"
   notificationSound: true,  // sonido al recibir mensajes/menciones
   botVolume: 100,           // volumen local de la música (0-200; >100 amplifica)
   screenQuality: "equilibrado", // preset de calidad al compartir pantalla
@@ -44,7 +47,14 @@ function migrateShortcut(v) {
 
 function load() {
   try {
-    const saved = { ...defaults, ...(JSON.parse(localStorage.getItem(KEY)) || {}) };
+    const raw = JSON.parse(localStorage.getItem(KEY)) || {};
+    // Migración: antes había un único `shareActivity`; ahora se separa en
+    // juego/música. Si existe el viejo, se usa como valor inicial de ambos.
+    if (raw.shareActivity !== undefined) {
+      if (raw.shareGameActivity === undefined) raw.shareGameActivity = raw.shareActivity;
+      if (raw.shareMusicActivity === undefined) raw.shareMusicActivity = raw.shareActivity;
+    }
+    const saved = { ...defaults, ...raw };
     saved.muteShortcut = migrateShortcut(saved.muteShortcut);
     saved.deafenShortcut = migrateShortcut(saved.deafenShortcut);
     // Tope 200 (>100 amplifica con la cadena WebAudio propia).

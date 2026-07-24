@@ -103,17 +103,26 @@
     </label>
 
     {#if activity.supported}
-      <label class="fld sharerow">
-        <span>Mostrar lo que juegas o escuchas</span>
-        <button
-          type="button" class="sw" class:on={$prefs.shareActivity !== false}
-          on:click={() => setPref("shareActivity", !($prefs.shareActivity !== false))}
-          role="switch" aria-checked={$prefs.shareActivity !== false} aria-label="Compartir actividad"
-        >
-          <span class="knob"></span>
-        </button>
+      <div class="fld">
+        <span>Actividad</span>
+        <label class="sharerow">
+          <span class="sharelbl"><i class="ti ti-device-gamepad-2"></i> Mostrar el juego</span>
+          <button
+            type="button" class="sw" class:on={$prefs.shareGameActivity !== false}
+            on:click={() => setPref("shareGameActivity", !($prefs.shareGameActivity !== false))}
+            role="switch" aria-checked={$prefs.shareGameActivity !== false} aria-label="Compartir juego"
+          ><span class="knob"></span></button>
+        </label>
+        <label class="sharerow">
+          <span class="sharelbl"><i class="ti ti-music"></i> Mostrar la música</span>
+          <button
+            type="button" class="sw" class:on={$prefs.shareMusicActivity !== false}
+            on:click={() => setPref("shareMusicActivity", !($prefs.shareMusicActivity !== false))}
+            role="switch" aria-checked={$prefs.shareMusicActivity !== false} aria-label="Compartir música"
+          ><span class="knob"></span></button>
+        </label>
         <small>La app detecta juegos conocidos y la música de Spotify (solo en escritorio).</small>
-      </label>
+      </div>
     {/if}
 
     <div class="fld">
@@ -279,13 +288,32 @@
     color: var(--shu);
     font-size: 13px;
   }
-  /* Interruptor de "compartir actividad" (mismo look que los de Apariencia). */
+  /* Interruptores de actividad (juego / música), mismo look que Apariencia. */
   .sharerow {
-    gap: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
   }
-  .sharerow small {
+  .sharelbl {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13.5px;
+    color: var(--tx);
+  }
+  .sharelbl i {
+    color: var(--shu);
+    font-size: 15px;
+  }
+  .sharerow .sw {
+    margin-left: auto;
+  }
+  .fld small {
     color: var(--fnt);
     font-size: 11px;
+    display: block;
+    margin-top: 2px;
   }
   .sw {
     width: 38px;

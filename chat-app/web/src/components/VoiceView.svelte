@@ -3,8 +3,10 @@
   // pero con la personalidad sumi-e de Kurug: recuadros de participantes con
   // aro de tinta al hablar, cámaras y pantallas compartidas, y una barra de
   // controles gorda (micro, ensordecer, cámara, compartir, salir).
+  import { onDestroy } from "svelte";
   import Avatar from "./Avatar.svelte";
   import Whiteboard from "./Whiteboard.svelte";
+  import UserMenu from "./UserMenu.svelte";
   import { me } from "../lib/stores.js";
   import { pingColor } from "../lib/ui.js";
   import {
@@ -22,6 +24,29 @@
   export let channelId = null; // para la pizarra compartida del canal
   export let voiceFlags = {}; // user_id -> { muted, deafened, rtt } (por presencia)
   export let onBack = () => {};
+
+  // --- Menú de usuario (clic derecho) + resaltado de "auditando" ---
+  // Igual que en la lista izquierda: clic derecho sobre un recuadro abre las
+  // opciones de voz (volumen / silenciar / desconectar) y ese usuario se ilumina
+  // con el color de acento para saber a quién se está tocando.
+  let menu = null; // { user, x, y }
+  function openMenu(e, p) {
+    if (p.self) return; // sobre ti mismo no hay opciones de voz
+    e.preventDefault();
+    e.stopPropagation();
+    menu = { user: { id: p.id, display_name: p.name }, x: e.clientX, y: e.clientY };
+  }
+  $: auditId = menu ? menu.user.id : null;
+
+  // --- Foco: agrandar el recuadro de un usuario ---
+  // Un clic sobre un recuadro lo pone en GRANDE (útil sobre todo cuando alguien
+  // enciende la cámara); otro clic lo devuelve al mosaico.
+  let focusId = null;
+  function toggleFocus(p) {
+    focusId = focusId === p.id ? null : p.id;
+  }
+  // Si el usuario enfocado se va de la sala, salir del foco.
+  $: if (focusId && !people.some((p) => p.id === focusId)) focusId = null;
 
   let boardOpen = false;
   // Al cambiar de canal, la pizarra abierta era la del canal anterior.
@@ -49,12 +74,40 @@
     ...(st.sharing ? [{ id: "me-screen", name: "Tú", stream: localShareStream(), me: true }] : []),
     ...peers.filter((p) => p.hasScreen).map((p) => ({ id: p.id + "-s", name: p.name, stream: p.screen })),
   ];
-  // Mosaico tipo Discord: columnas ≈ raíz cuadrada del nº de recuadros
-  // (1→1, 2→2, 3-4→2, 5-9→3, 10-16→4…) y el CSS limita el ancho para que el
-  // mosaico completo quepa a lo alto — antes quedaban en una sola línea
-  // estirada con un hueco enorme debajo.
-  $: gridCols = Math.ceil(Math.sqrt(people.length || 1));
-  $: gridRows = Math.ceil((people.length || 1) / gridCols);
+  // --- Layout del mosaico calculado en JS ---
+  // El CSS puro no sabe repartir N recuadros de proporción fija en un espacio
+  // WxH sin que se solapen cuando falta alto (el bug de la ventana pequeña:
+  // los recuadros crecían más que el área y se montaban unos sobre otros). Aquí
+  // se PRUEBAN todas las columnas posibles y se elige la que da el recuadro más
+  // grande cabiendo entero, ancho Y alto. Así llena el espacio y nunca desborda.
+  const GAP = 12;
+  const ASPECT = 16 / 10; // ancho/alto de cada recuadro
+  let stageW = 0, stageH = 0;
+  function measureStage(node) {
+    const ro = new ResizeObserver((ents) => {
+      const r = ents[0].contentRect;
+      stageW = r.width; stageH = r.height;
+    });
+    ro.observe(node);
+    return { destroy: () => ro.disconnect() };
+  }
+  function bestLayout(n, W, H) {
+    if (n <= 0 || W <= 0 || H <= 0) return { cols: 1, w: 0, h: 0 };
+    let best = { cols: 1, w: 0, h: 0 };
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      const tw = (W - GAP * (cols - 1)) / cols;
+      const th = (H - GAP * (rows - 1)) / rows;
+      // Recuadro que respeta la proporción cabiendo en la celda.
+      const w = Math.min(tw, th * ASPECT);
+      if (w > best.w) best = { cols, w, h: w / ASPECT };
+    }
+    return best;
+  }
+  // Con foco activo, el mosaico de "los demás" va en una tira lateral estrecha.
+  $: mosaic = focusId ? people.filter((p) => p.id !== focusId) : people;
+  $: focused = focusId ? people.find((p) => p.id === focusId) : null;
+  $: lay = bestLayout(mosaic.length, stageW, stageH);
 
   // Participantes (yo + peers) para los recuadros de personas.
   $: people = [
@@ -78,6 +131,8 @@
       custom_status: voiceFlags[p.id]?.custom_status || null,
     })),
   ];
+
+  onDestroy(() => { menu = null; focusId = null; });
 </script>
 
 <section class="vv">
@@ -112,28 +167,62 @@
       </div>
     {/if}
 
-    <div class="grid" style="--cols:{gridCols}; --rows:{gridRows}">
-      {#each people as p (p.id)}
-        <div class="tile" class:speaking={p.speaking}>
-          {#if p.hasCamera && p.camera}
-            <video use:srcObject={p.camera} autoplay playsinline muted={p.self}></video>
-          {:else}
-            <div class="mid">
-              <Avatar name={p.name} url={p.avatar} size={82} status={p.status} />
-              {#if p.custom_status}<span class="cst" title={p.custom_status}>{p.custom_status}</span>{/if}
+    <!-- Recuadro de un participante. `w`/`h` en px: 0 = que mande el CSS
+         (recuadro enfocado, que se estira). El avatar escala con el recuadro. -->
+    {#snippet tile(p, w, h)}
+      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+      <div
+        class="tile"
+        class:speaking={p.speaking}
+        class:auditing={auditId === p.id}
+        class:focusable={true}
+        style={w ? `width:${w}px;height:${h}px` : ""}
+        role="button"
+        tabindex="-1"
+        title="{p.name}{p.self ? ' (tú)' : ''} · clic para {focusId === p.id ? 'reducir' : 'agrandar'}{p.self ? '' : ' · clic derecho para opciones'}"
+        on:click={() => toggleFocus(p)}
+        on:contextmenu={(e) => openMenu(e, p)}
+      >
+        {#if p.hasCamera && p.camera}
+          <video use:srcObject={p.camera} autoplay playsinline muted={p.self}></video>
+        {:else}
+          <div class="mid">
+            <Avatar name={p.name} url={p.avatar} size={Math.round(Math.max(40, Math.min(120, (h || 220) * 0.4)))} status={p.status} />
+            {#if p.custom_status}<span class="cst" title={p.custom_status}>{p.custom_status}</span>{/if}
+          </div>
+        {/if}
+        <span class="lbl">
+          {p.name}{#if p.self}&nbsp;(tú){/if}
+          {#if p.sharing}<span class="live-badge">EN DIRECTO</span>{/if}
+          {#if p.deafened}<i class="ti ti-headphones-off mo" title="Ensordecido"></i>
+          {:else if p.micMuted}<i class="ti ti-microphone-off mo" title="Micro silenciado"></i>{/if}
+          <span class="ping" style="color:{pingColor(p.rtt, p.quality)}" title="Latencia con el servidor de voz">
+            <i class="ti ti-wifi"></i>{p.rtt != null ? ` ${p.rtt} ms` : ""}
+          </span>
+        </span>
+      </div>
+    {/snippet}
+
+    <div class="gridarea" use:measureStage>
+      {#if focused}
+        <!-- Modo foco: un recuadro grande + tira de miniaturas debajo. -->
+        <div class="focuswrap">
+          <div class="bigtile">{@render tile(focused, 0, 0)}</div>
+          {#if mosaic.length}
+            <div class="strip">
+              {#each mosaic as p (p.id)}
+                {@render tile(p, 150, 94)}
+              {/each}
             </div>
           {/if}
-          <span class="lbl">
-            {p.name}{#if p.self}&nbsp;(tú){/if}
-            {#if p.sharing}<span class="live-badge">EN DIRECTO</span>{/if}
-            {#if p.deafened}<i class="ti ti-headphones-off mo" title="Ensordecido"></i>
-            {:else if p.micMuted}<i class="ti ti-microphone-off mo" title="Micro silenciado"></i>{/if}
-            <span class="ping" style="color:{pingColor(p.rtt, p.quality)}" title="Latencia con el servidor de voz">
-              <i class="ti ti-wifi"></i>{p.rtt != null ? ` ${p.rtt} ms` : ""}
-            </span>
-          </span>
         </div>
-      {/each}
+      {:else}
+        <div class="grid">
+          {#each mosaic as p (p.id)}
+            {@render tile(p, lay.w, lay.h)}
+          {/each}
+        </div>
+      {/if}
     </div>
   </div>
   {/if}
@@ -159,6 +248,10 @@
     </button>
   </div>
 </section>
+
+{#if menu}
+  <UserMenu user={menu.user} x={menu.x} y={menu.y} onClose={() => (menu = null)} />
+{/if}
 
 <style>
   .vv {
@@ -198,6 +291,15 @@
     display: flex;
     flex-direction: column;
   }
+  /* Zona medida donde se calcula el tamaño de los recuadros (rellena lo que
+     sobra tras el aviso de error y las pantallas compartidas). */
+  .gridarea {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
   /* La pizarra ocupa el área del escenario; la barra de controles sigue abajo. */
   .boardwrap {
     flex: 1;
@@ -219,21 +321,49 @@
     gap: 12px;
     margin-bottom: 14px;
   }
+  /* Mosaico: los recuadros llegan con tamaño EXACTO calculado en JS (bestLayout)
+     y solo se centran aquí. Al no depender de aspect-ratio + grid, nunca se
+     solapan aunque falte alto (el bug de la ventana pequeña). */
   .grid {
-    display: grid;
-    grid-template-columns: repeat(var(--cols, 3), 1fr);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-content: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+  }
+  /* Modo foco: recuadro grande arriba, tira de miniaturas debajo. */
+  .focuswrap {
+    display: flex;
+    flex-direction: column;
     gap: 12px;
     width: 100%;
-    align-self: center;
-    /* Centrado vertical cuando sobra alto (margin auto no rompe el scroll si
-       falta), y ancho limitado para que el mosaico completo QUEPA a lo alto:
-       alto disponible * aspecto (16/10) * columnas / filas. */
-    margin: auto;
-    max-width: min(100%, calc((100 * var(--dvh) - 230px) * 1.6 * var(--cols, 3) / var(--rows, 2)));
+    height: 100%;
+    min-height: 0;
+  }
+  .bigtile {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .bigtile :global(.tile) {
+    width: auto;
+    height: 100%;
+    max-width: 100%;
+    aspect-ratio: 16 / 10;
+  }
+  .strip {
+    flex: none;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
   }
   .tile {
     position: relative;
-    aspect-ratio: 16 / 10;
     background: #0c0a08;
     border: 1px solid var(--bd2);
     border-radius: 16px;
@@ -242,8 +372,14 @@
     align-items: center;
     justify-content: center;
     box-shadow: 0 6px 20px var(--shadow);
+    cursor: pointer;
   }
-  .tile.screen { aspect-ratio: 16 / 9; }
+  .tile.screen { aspect-ratio: 16 / 9; width: 100%; height: auto; }
+  /* Recuadro que se está auditando (menú de clic derecho abierto): acento. */
+  .tile.auditing {
+    border-color: var(--shu);
+    box-shadow: 0 0 0 3px rgba(var(--shu-rgb), 0.5);
+  }
   .tile video { width: 100%; height: 100%; object-fit: cover; }
   .tile.screen video { object-fit: contain; background: #000; }
   /* Aro de tinta al hablar. */

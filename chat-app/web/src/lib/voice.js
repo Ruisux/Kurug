@@ -868,17 +868,33 @@ export function localShareStream() {
 }
 
 // --- Cámara ---
+let cameraBusy = false;
 export async function toggleCamera() {
-  if (!room) return;
+  if (!room || cameraBusy) return;
+  cameraBusy = true;
   const on = room.localParticipant.isCameraEnabled;
   try {
     await room.localParticipant.setCameraEnabled(!on, {
       deviceId: get(prefs).cameraDeviceId || undefined,
     });
-    voiceState.update((s) => ({ ...s, cameraOn: !on }));
+    // OJO al "se queda trabada con la última imagen": el estado se lee de la
+    // REALIDAD de LiveKit (no de `!on`), y al apagar se SUELTA la caché del
+    // stream local y se detiene su pista, para que el <video> no conserve el
+    // último fotograma congelado. Sin esto, si la desactivación no cuajaba del
+    // todo, el recuadro seguía mostrando la imagen vieja.
+    const nowOn = room.localParticipant.isCameraEnabled;
+    if (!nowOn) {
+      const pub = room.localParticipant.getTrackPublication(Track.Source.Camera);
+      try { pub?.track?.mediaStreamTrack?.stop(); } catch {}
+      dropClone(cameraCache);
+      cameraCache.track = cameraCache.stream = null;
+    }
+    voiceState.update((s) => ({ ...s, cameraOn: nowOn }));
     publish();
   } catch (e) {
     voiceState.update((s) => ({ ...s, error: "No se pudo acceder a la cámara." }));
+  } finally {
+    cameraBusy = false;
   }
 }
 
